@@ -1,0 +1,9 @@
+# SDK location (set this to your Android SDK path)
+# sdk.dir=C:\\Users\\YourUsername\\AppData\\Local\\Android\\Sdk
+
+# API credentials for Telegram
+# Copy this file to local.properties and fill in your values
+# local.properties is in .gitignore and won't be committed
+
+api.id=1234567
+api.hash=abcdef1234567890abcdef1234567890
