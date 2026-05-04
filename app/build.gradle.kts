@@ -13,8 +13,8 @@ android {
         applicationId = "top.noxc.wmessenger"
         minSdk = 25
         targetSdk = 35
-        versionCode = 10101000
-        versionName = "1.1.1"
+        versionCode = 10102000
+        versionName = "1.1.2"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))

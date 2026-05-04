@@ -85,7 +85,7 @@
     <string name="tdlib_version">TDLib Version</string>
     <string name="platform">Platform</string>
     <string name="protocol">Protocol</string>
-    <string name="developer">Developer</string>
+    <string name="repository">Repository</string>
     <string name="build_number">Build</string>
     <string name="min_sdk">Min SDK</string>
     <string name="target_sdk">Target SDK</string>

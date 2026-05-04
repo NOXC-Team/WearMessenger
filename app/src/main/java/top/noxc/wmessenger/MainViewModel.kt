@@ -310,6 +310,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _accountList.value = _accountList.value.map {
             if (it.index == index) it.copy(loggedIn = false) else it
         }
+        if (_accountList.value.none { it.loggedIn }) {
+            prefs.edit()
+                .putBoolean(KEY_APP_LOCK_ENABLED, false)
+                .remove(KEY_APP_LOCK_PASSWORD)
+                .apply()
+            _isAppLockEnabled.value = false
+            _appLockPassword.value = ""
+        }
         if (_currentAccountIndex.value == index) {
             _uiState.value = UiState()
             navStack.clear()
@@ -904,6 +912,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("account_logged_in_$idx", false).apply()
         _accountList.value = _accountList.value.map {
             if (it.index == idx) it.copy(loggedIn = false) else it
+        }
+        if (_accountList.value.none { it.loggedIn }) {
+            prefs.edit()
+                .putBoolean(KEY_APP_LOCK_ENABLED, false)
+                .remove(KEY_APP_LOCK_PASSWORD)
+                .apply()
+            _isAppLockEnabled.value = false
+            _appLockPassword.value = ""
         }
         navigateTo(Screen.LOGIN)
     }

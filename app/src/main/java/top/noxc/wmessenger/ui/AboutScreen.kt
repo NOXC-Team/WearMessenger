@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,19 +29,7 @@ import java.util.Hashtable
 fun AboutScreen(
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    val tdLibVersion = remember {
-        try {
-            val clazz = Class.forName("org.drinkless.tdlib.BuildConfig")
-            clazz.getDeclaredField("VERSION_NAME").get(null) as String
-        } catch (_: Exception) {
-            "Unknown"
-        }
-    }
-
-    val qrCodeBitmap = remember {
-        generateQRCode("https://github.com/NOXC-Team/WearMessenger", 200, 200)
-    }
+    val tdLibVersion = "1.8.63"
 
     Column(
         modifier = Modifier
@@ -72,7 +59,6 @@ fun AboutScreen(
         AboutInfoRow(stringResource(R.string.min_sdk), "API 25")
         AboutInfoRow(stringResource(R.string.target_sdk), "API 35")
         AboutInfoRow(stringResource(R.string.protocol), "TDLib")
-        AboutInfoRow(stringResource(R.string.developer), "NOXC-Team")
 
         Spacer(Modifier.height(24.dp))
 
@@ -83,18 +69,43 @@ fun AboutScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "NOXC-Team",
+                text = stringResource(R.string.repository),
                 color = Color.White,
-                fontSize = 16.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            if (qrCodeBitmap != null) {
+            val repoQrBitmap = remember {
+                generateQRCode("https://github.com/NOXC-Team/WearMessenger", 200, 200)
+            }
+            if (repoQrBitmap != null) {
                 Image(
-                    bitmap = qrCodeBitmap.asImageBitmap(),
-                    contentDescription = "QR Code",
+                    bitmap = repoQrBitmap.asImageBitmap(),
+                    contentDescription = "Repository QR Code",
                     modifier = Modifier
-                        .size(200.dp)
+                        .size(160.dp)
+                        .background(Color.Black)
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Text(
+                text = "NOXC-Team",
+                color = Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            val devQrBitmap = remember {
+                generateQRCode("https://noxc.top", 200, 200)
+            }
+            if (devQrBitmap != null) {
+                Image(
+                    bitmap = devQrBitmap.asImageBitmap(),
+                    contentDescription = "Developer QR Code",
+                    modifier = Modifier
+                        .size(160.dp)
                         .background(Color.Black)
                 )
             }

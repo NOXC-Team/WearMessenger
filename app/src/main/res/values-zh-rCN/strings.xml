@@ -85,7 +85,7 @@
     <string name="tdlib_version">TDLib 版本</string>
     <string name="platform">平台</string>
     <string name="protocol">协议</string>
-    <string name="developer">开发者</string>
+    <string name="repository">仓库</string>
     <string name="build_number">构建</string>
     <string name="min_sdk">最低 SDK</string>
     <string name="target_sdk">目标 SDK</string>

@@ -83,7 +83,7 @@ class TdLibManager(
     private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
     val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions
 
-    private val _inactiveSessionTtlDays = MutableStateFlow(0)
+    private val _inactiveSessionTtlDays = MutableStateFlow(180)
     val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays
 
     private val _userNames = mutableMapOf<Long, String>()

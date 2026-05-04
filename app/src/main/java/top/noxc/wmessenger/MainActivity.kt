@@ -106,10 +106,9 @@ class MainActivity : ComponentActivity() {
                 if (languageChanged) {
                     viewModel.clearLanguageChanged()
                     val intent = android.content.Intent(this@MainActivity, MainActivity::class.java)
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
                     finishAffinity()
-                    android.os.Process.killProcess(android.os.Process.myPid())
                 }
             }
 
