@@ -1,8 +1,8 @@
 package top.noxc.wmessenger.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,9 +22,10 @@ import top.noxc.wmessenger.R
 @Composable
 fun AppLockScreen(
     onUnlock: () -> Unit,
-    onVerifyPin: (String) -> Boolean,
-    onBack: () -> Unit
+    onVerifyPin: (String) -> Boolean
 ) {
+    BackHandler(enabled = true) {}
+
     var pin by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
@@ -36,12 +36,7 @@ fun AppLockScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .verticalScroll(rememberScrollState())
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures { _, dragAmount ->
-                    if (dragAmount > 50f) onBack()
-                }
-            },
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(32.dp))
@@ -97,8 +92,7 @@ fun AppLockScreen(
                     pin = pin.dropLast(1)
                     showError = false
                 }
-            },
-            onBack = onBack
+            }
         )
 
         Spacer(Modifier.height(16.dp))
@@ -125,11 +119,8 @@ fun PinDots(pinLength: Int, totalLength: Int) {
 @Composable
 fun PinKeyboard(
     onDigit: (String) -> Unit,
-    onDelete: () -> Unit,
-    onBack: () -> Unit
+    onDelete: () -> Unit
 ) {
-    val cancelLabel = stringResource(R.string.cancel)
-
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -174,16 +165,6 @@ fun PinKeyboard(
                     fontSize = 20.sp
                 )
             }
-        }
-
-        Spacer(Modifier.height(4.dp))
-
-        TextButton(onClick = onBack) {
-            Text(
-                text = cancelLabel,
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
         }
     }
 }

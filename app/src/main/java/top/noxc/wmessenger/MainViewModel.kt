@@ -135,10 +135,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
     val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions.asStateFlow()
 
-    private val _inactiveSessionTtlDays = MutableStateFlow(0)
+    private val _inactiveSessionTtlDays = MutableStateFlow(180)
     val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays.asStateFlow()
 
-    var lastActiveTime: Long = System.currentTimeMillis()
+    var lastActiveTime: Long = 0L
         private set
 
     init {
@@ -235,7 +235,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _canSendMessages.value = existingManager.canSendMessages.value
                 _proxyList.value = existingManager.proxyList.value
                 _connectionState.value = existingManager.connectionState.value
-                navigateTo(Screen.CHAT_LIST)
+                if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty() && lastActiveTime == 0L) {
+                    navigateTo(Screen.APP_LOCK)
+                } else {
+                    navigateTo(Screen.CHAT_LIST)
+                }
                 existingManager.loadChats()
                 return
             } else if (currentState != null) {
@@ -573,7 +577,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _accountList.value = _accountList.value.map {
                     if (it.index == idx) it.copy(loggedIn = true) else it
                 }
-                navigateTo(Screen.CHAT_LIST)
+                if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty() && lastActiveTime == 0L) {
+                    navigateTo(Screen.APP_LOCK)
+                } else {
+                    navigateTo(Screen.CHAT_LIST)
+                }
                 currentManager?.loadChats()
             }
 
@@ -826,6 +834,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .apply()
         _isAppLockEnabled.value = true
         _appLockPassword.value = password
+        lastActiveTime = 0L
     }
 
     fun disableAppLock() {

@@ -413,15 +413,14 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.APP_LOCK -> AppLockScreen(
-                        onUnlock = { viewModel.navigateBack() },
-                        onVerifyPin = { viewModel.verifyAppLock(it) },
-                        onBack = { viewModel.navigateBack() }
+                        onUnlock = { viewModel.navigateBackToChatList() },
+                        onVerifyPin = { viewModel.verifyAppLock(it) }
                     )
 
                     Screen.APP_LOCK_SET -> AppLockSetScreen(
                         onPinSet = { pin ->
                             viewModel.setupAppLock(pin)
-                            viewModel.navigateBack()
+                            viewModel.navigateTo(Screen.APP_LOCK)
                         },
                         onBack = { viewModel.navigateBack() }
                     )

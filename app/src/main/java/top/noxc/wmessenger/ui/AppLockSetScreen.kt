@@ -128,8 +128,7 @@ fun AppLockSetScreen(
                         phase = 0
                     }
                 }
-            },
-            onBack = onBack
+            }
         )
 
         Spacer(Modifier.height(16.dp))

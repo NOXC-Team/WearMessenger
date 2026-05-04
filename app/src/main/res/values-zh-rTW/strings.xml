@@ -102,15 +102,14 @@
     <string name="pin_mismatch">兩次輸入的 PIN 不一致</string>
     <string name="pin_set">PIN 設定成功</string>
     <string name="this_device">此裝置</string>
+    <string name="other_devices">其他裝置</string>
     <string name="last_active">最後活躍：%s</string>
-    <string name="terminate_session">終止工作階段</string>
-    <string name="terminate_all_other">終止所有其他工作階段</string>
-    <string name="auto_terminate">自動終止不活躍工作階段</string>
-    <string name="auto_terminate_timeout">逾時：%s</string>
-    <string name="session_terminated">工作階段已終止</string>
+    <string name="terminate_all_other">登出其他所有裝置</string>
+    <string name="auto_terminate_prefix">如果我不上線</string>
+    <string name="auto_terminate_suffix">，則自動登出</string>
+    <string name="session_terminated">會話已終止</string>
     <string name="app_lock_timeout_desc">離開應用程式後鎖定時間</string>
     <string name="change_pin">修改 PIN</string>
-    <string name="disable_pin">關閉 PIN</string>
     <string name="first_name">名字</string>
     <string name="last_name">姓氏</string>
     <string name="send_code">發送驗證碼</string>
@@ -119,7 +118,7 @@
     <string name="phone_number">手機號碼</string>
     <string name="code">驗證碼</string>
     <string name="email">信箱</string>
-    <string name="three_days">3 天</string>
+
     <string name="one_week">1 週</string>
     <string name="three_months">3 個月</string>
     <string name="six_months">6 個月</string>

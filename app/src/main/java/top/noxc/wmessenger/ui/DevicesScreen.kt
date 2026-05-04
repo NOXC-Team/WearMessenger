@@ -40,17 +40,16 @@ fun DevicesScreen(
     var showTtlDialog by remember { mutableStateOf(false) }
 
     val thisDeviceLabel = stringResource(R.string.this_device)
-    val terminateLabel = stringResource(R.string.terminate_session)
-    val terminateAllLabel = stringResource(R.string.terminate_all_other)
-    val autoTerminateLabel = stringResource(R.string.auto_terminate)
-    val threeDaysLabel = stringResource(R.string.three_days)
+    val logoutLabel = stringResource(R.string.logout)
+    val logoutAllLabel = stringResource(R.string.terminate_all_other)
+    val autoTerminatePrefix = stringResource(R.string.auto_terminate_prefix)
+    val autoTerminateSuffix = stringResource(R.string.auto_terminate_suffix)
     val oneWeekLabel = stringResource(R.string.one_week)
     val threeMonthsLabel = stringResource(R.string.three_months)
     val sixMonthsLabel = stringResource(R.string.six_months)
     val oneYearLabel = stringResource(R.string.one_year)
 
     val ttlDisplay = when (inactiveSessionTtlDays) {
-        3 -> threeDaysLabel
         7 -> oneWeekLabel
         90 -> threeMonthsLabel
         180 -> sixMonthsLabel
@@ -88,7 +87,7 @@ fun DevicesScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = autoTerminateLabel,
+                text = autoTerminatePrefix,
                 color = Color.White,
                 fontSize = 13.sp
             )
@@ -96,6 +95,11 @@ fun DevicesScreen(
                 text = ttlDisplay,
                 color = Color.Gray,
                 fontSize = 12.sp
+            )
+            Text(
+                text = autoTerminateSuffix,
+                color = Color.White,
+                fontSize = 13.sp
             )
         }
         Divider(color = Color(0xFF222222))
@@ -117,7 +121,7 @@ fun DevicesScreen(
 
         if (otherSessions.isNotEmpty()) {
             Text(
-                text = "Other Devices",
+                text = stringResource(R.string.other_devices),
                 color = Color.Gray,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -138,7 +142,7 @@ fun DevicesScreen(
                 modifier = Modifier.padding(horizontal = 12.dp)
             ) {
                 Text(
-                    text = terminateAllLabel,
+                    text = logoutAllLabel,
                     color = Color(0xFFFF6B6B),
                     fontSize = 13.sp
                 )
@@ -174,7 +178,7 @@ fun SessionRow(
     session: SessionItem,
     onTerminate: (() -> Unit)?
 ) {
-    val terminateLabel = stringResource(R.string.terminate_session)
+    val logoutLabel = stringResource(R.string.logout)
 
     Row(
         modifier = Modifier
@@ -204,7 +208,7 @@ fun SessionRow(
 
         if (onTerminate != null) {
             Text(
-                text = terminateLabel,
+                text = logoutLabel,
                 color = Color(0xFFFF6B6B),
                 fontSize = 11.sp,
                 modifier = Modifier.clickable { onTerminate() }
@@ -219,15 +223,13 @@ fun TtlDialog(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val autoTerminateLabel = stringResource(R.string.auto_terminate)
-    val threeDaysLabel = stringResource(R.string.three_days)
+    val autoTerminatePrefix = stringResource(R.string.auto_terminate_prefix)
     val oneWeekLabel = stringResource(R.string.one_week)
     val threeMonthsLabel = stringResource(R.string.three_months)
     val sixMonthsLabel = stringResource(R.string.six_months)
     val oneYearLabel = stringResource(R.string.one_year)
 
     val options = listOf(
-        3 to threeDaysLabel,
         7 to oneWeekLabel,
         90 to threeMonthsLabel,
         180 to sixMonthsLabel,
@@ -246,7 +248,7 @@ fun TtlDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = autoTerminateLabel,
+                    text = autoTerminatePrefix,
                     color = Color.White,
                     fontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 12.dp)

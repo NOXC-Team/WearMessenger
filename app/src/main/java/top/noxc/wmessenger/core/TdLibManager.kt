@@ -357,11 +357,8 @@ class TdLibManager(
                 }
 
                 // Determine if there are more messages to load
-                _hasMoreMessages = if (resultSize == 0) {
-                    false
-                } else {
-                    resultSize >= 50
-                }
+                // TDLib returns 0 messages only when the end of history is reached
+                _hasMoreMessages = resultSize > 0
 
                 // Reset loading states
                 _isLoadingMessages = false

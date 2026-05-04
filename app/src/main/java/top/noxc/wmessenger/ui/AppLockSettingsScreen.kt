@@ -31,7 +31,6 @@ fun AppLockSettingsScreen(
     val appLockLabel = stringResource(R.string.app_lock)
     val timeoutDescLabel = stringResource(R.string.app_lock_timeout_desc)
     val changePinLabel = stringResource(R.string.change_pin)
-    val disablePinLabel = stringResource(R.string.disable_pin)
     val immediatelyLabel = stringResource(R.string.immediately)
     val secondsLabel = stringResource(R.string.seconds)
     val minuteLabel = stringResource(R.string.minute)
@@ -135,22 +134,6 @@ fun AppLockSettingsScreen(
                 Text(
                     text = "→",
                     color = Color.Gray,
-                    fontSize = 13.sp
-                )
-            }
-            Divider(color = Color(0xFF222222))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAppLockToggle(false) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = disablePinLabel,
-                    color = Color(0xFFFF6B6B),
                     fontSize = 13.sp
                 )
             }
