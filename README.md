@@ -2,14 +2,20 @@
 
 A lightweight, open-source Telegram client for Wear OS.
 
+[简体中文](README_zh_CN.md) | [繁體中文](README_zh_TW.md)
+
 ## Features
 
 - Send and receive text messages
 - View chat history with automatic pagination (loads older messages when scrolling to top)
+- View images and videos, take and send photos
 - Support for proxy servers
 - Multiple accounts support
 - Standalone app (no phone required)
 - Built with Jetpack Compose for modern UI
+- App Lock with PIN protection
+- Device session management (view and terminate other devices)
+- Storage management (view cache size and clear cache)
 
 ## Comparison with other Wear OS Telegram clients
 
@@ -20,12 +26,28 @@ A lightweight, open-source Telegram client for Wear OS.
 | **Standalone** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Minimum API** | 25 (Android 7.0) | ? | 24 (Android 7.0) |
 | **Voice Messages** | ❌ No | ✅ Yes | ✅ Yes |
-| **Images/Videos** | ❌ No | ✅ Yes | ✅ Yes |
-| **Proxy Support** | ✅ Yes | ? | ? |
-| **Multiple Accounts** | ✅ Yes | ? | ✅ Yes |
+| **Images/Videos** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Proxy Support** | ✅ Yes | ? | ✅ Yes |
+| **Multiple Accounts** | ✅ Yes (up to 99) | ? | ✅ Yes |
 | **Digital Crown** | ❌ No | ? | ✅ Yes |
+| **App Lock** | ✅ Yes | ? | ? |
+| **Session Management** | ✅ Yes | ? | ? |
+| **Storage Management** | ✅ Yes (view & clear) | ? | ✅ Yes (clear only) |
+| **APK size (arm64-v8a)** | ~15.3 MB | ~25 MB | ~43.5 MB |
 
-*Note: WearMessenger focuses on lightweight messaging experience. For full-featured experience including media, check out Weargram or TGwear.*
+*Note: WearMessenger focuses on lightweight messaging experience.*
+
+## Installation
+
+1. Download the latest APK from [GitHub Releases](https://github.com/NOXC-Team/WearMessenger/releases)
+2. Choose the appropriate version for your device:
+   - `app-arm64-v8a.apk` for 64-bit ARM devices (most modern Wear OS devices)
+   - `app-armeabi-v7a.apk` for 32-bit ARM devices
+   - `app-universal.apk` for all architectures (larger file size)
+3. Install via ADB:
+   ```bash
+   adb install <path-to-apk>
+   ```
 
 ## Setup
 

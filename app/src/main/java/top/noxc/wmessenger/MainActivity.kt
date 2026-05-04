@@ -40,6 +40,10 @@ import top.noxc.wmessenger.ui.StorageScreen
 import top.noxc.wmessenger.ui.AboutScreen
 import top.noxc.wmessenger.ui.SecurityScreen
 import top.noxc.wmessenger.ui.QRCodeLinkScreen
+import top.noxc.wmessenger.ui.AppLockScreen
+import top.noxc.wmessenger.ui.AppLockSetScreen
+import top.noxc.wmessenger.ui.AppLockSettingsScreen
+import top.noxc.wmessenger.ui.DevicesScreen
 import top.noxc.wmessenger.core.FreezeInfo
 import java.util.Locale
 
@@ -91,6 +95,10 @@ class MainActivity : ComponentActivity() {
             val inlineKeyboard by viewModel.inlineKeyboard.collectAsState()
             val isFrozen by viewModel.isFrozen.collectAsState()
             val freezeInfo by viewModel.freezeInfo.collectAsState()
+            val isAppLockEnabled by viewModel.isAppLockEnabled.collectAsState()
+            val autoLockTimeout by viewModel.autoLockTimeout.collectAsState()
+            val sessions by viewModel.sessions.collectAsState()
+            val inactiveSessionTtlDays by viewModel.inactiveSessionTtlDays.collectAsState()
             val availableLanguages = viewModel.availableLanguages
             val languageChanged by viewModel.languageChanged.collectAsState()
 
@@ -238,6 +246,7 @@ class MainActivity : ComponentActivity() {
                     Screen.MENU -> MenuScreen(
                         accounts = accounts,
                         currentAccountIndex = currentAccountIndex,
+                        isAppLockEnabled = isAppLockEnabled,
                         onSwitchAccount = { viewModel.switchAccount(it) },
                         onAddAccount = { viewModel.addAccount() },
                         onLogoutAccount = { viewModel.logoutAccount(it) },
@@ -247,6 +256,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onSearch = { viewModel.navigateTo(Screen.SEARCH) },
                         onSettings = { viewModel.navigateTo(Screen.SETTING) },
+                        onLockNow = { viewModel.lockNow() },
                         onSwipeUp = { viewModel.navigateBackToChatList() }
                     )
 
@@ -279,7 +289,23 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.SECURITY -> SecurityScreen(
-                        onBack = { viewModel.navigateBack() }
+                        onBack = { viewModel.navigateBack() },
+                        onAppLockSettings = { viewModel.navigateTo(Screen.APP_LOCK_SETTINGS) },
+                        onDevicesClick = {
+                            viewModel.loadSessions()
+                            viewModel.navigateTo(Screen.DEVICES)
+                        }
+                    )
+
+                    Screen.APP_LOCK_SETTINGS -> AppLockSettingsScreen(
+                        isAppLockEnabled = isAppLockEnabled,
+                        autoLockTimeout = autoLockTimeout,
+                        onBack = { viewModel.navigateBack() },
+                        onAppLockToggle = { enabled ->
+                            if (enabled) viewModel.setupAppLock("") else viewModel.disableAppLock()
+                        },
+                        onAppLockSet = { viewModel.navigateTo(Screen.APP_LOCK_SET) },
+                        onAutoLockTimeoutChange = { viewModel.setAutoLockTimeout(it) }
                     )
 
                     Screen.CHAT -> {
@@ -385,10 +411,43 @@ class MainActivity : ComponentActivity() {
                         link = uiState.qrCodeLink,
                         onBack = { viewModel.navigateBack() }
                     )
+
+                    Screen.APP_LOCK -> AppLockScreen(
+                        onUnlock = { viewModel.navigateBack() },
+                        onVerifyPin = { viewModel.verifyAppLock(it) },
+                        onBack = { viewModel.navigateBack() }
+                    )
+
+                    Screen.APP_LOCK_SET -> AppLockSetScreen(
+                        onPinSet = { pin ->
+                            viewModel.setupAppLock(pin)
+                            viewModel.navigateBack()
+                        },
+                        onBack = { viewModel.navigateBack() }
+                    )
+
+                    Screen.DEVICES -> DevicesScreen(
+                        sessions = sessions,
+                        inactiveSessionTtlDays = inactiveSessionTtlDays,
+                        onTerminateSession = { viewModel.terminateSession(it) },
+                        onTerminateAllOther = { viewModel.terminateAllOtherSessions() },
+                        onSetInactiveSessionTtl = { viewModel.setInactiveSessionTtl(it) },
+                        onBack = { viewModel.navigateBack() }
+                    )
                 }
             }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (viewModel as? MainViewModel)?.checkAppLock()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        (viewModel as? MainViewModel)?.updateLastActiveTime()
     }
 
     override fun onDestroy() {

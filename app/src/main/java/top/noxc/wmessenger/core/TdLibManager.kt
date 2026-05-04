@@ -80,6 +80,12 @@ class TdLibManager(
     val isLoadingHistory: StateFlow<Boolean> = _isLoadingHistory
     private var _lastLoadWasLocal = false
 
+    private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
+    val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions
+
+    private val _inactiveSessionTtlDays = MutableStateFlow(0)
+    val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays
+
     private val _userNames = mutableMapOf<Long, String>()
     private val _chatNames = mutableMapOf<Long, String>()
     private val _filePaths = mutableMapOf<Int, String>()
@@ -375,8 +381,27 @@ class TdLibManager(
                 }
             }
 
+            TdApi.Sessions.CONSTRUCTOR -> {
+                val sessionsResult = result as TdApi.Sessions
+                _inactiveSessionTtlDays.value = sessionsResult.inactiveSessionTtlDays
+                _sessions.value = sessionsResult.sessions.map { session ->
+                    top.noxc.wmessenger.ui.SessionItem(
+                        id = session.id,
+                        isCurrent = session.isCurrent,
+                        deviceModel = session.deviceModel,
+                        platform = session.platform,
+                        applicationName = session.applicationName,
+                        lastActiveDate = formatTimestamp(session.lastActiveDate),
+                        canTerminate = !session.isCurrent
+                    )
+                }
+            }
+
             TdApi.AddedProxy.CONSTRUCTOR -> {
                 loadProxies()
+            }
+
+            TdApi.Message.CONSTRUCTOR -> {
             }
 
             TdApi.AddedProxies.CONSTRUCTOR -> {
@@ -631,6 +656,34 @@ class TdLibManager(
         }
         client = null
         closedLatch = null
+    }
+
+    fun loadSessions() {
+        client?.send(TdApi.GetActiveSessions(), this)
+    }
+
+    fun terminateSession(sessionId: Long) {
+        client?.send(TdApi.TerminateSession(sessionId)) { result ->
+            if (result is TdApi.Ok) {
+                loadSessions()
+            }
+        }
+    }
+
+    fun terminateAllOtherSessions() {
+        client?.send(TdApi.TerminateAllOtherSessions()) { result ->
+            if (result is TdApi.Ok) {
+                loadSessions()
+            }
+        }
+    }
+
+    fun setInactiveSessionTtl(days: Int) {
+        client?.send(TdApi.SetInactiveSessionTtl(days)) { result ->
+            if (result is TdApi.Ok) {
+                loadSessions()
+            }
+        }
     }
 
     fun loadChats() {
@@ -1271,6 +1324,12 @@ class TdLibManager(
         else if (first.isNotEmpty()) first
         else if (last.isNotEmpty()) last
         else user.phoneNumber ?: "User"
+    }
+
+    private fun formatTimestamp(timestamp: Int): String {
+        if (timestamp == 0) return ""
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+        return sdf.format(java.util.Date(timestamp.toLong() * 1000))
     }
 
     private fun getMessageText(message: TdApi.Message): String {

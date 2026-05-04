@@ -25,6 +25,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import top.noxc.wmessenger.AuthType
+import top.noxc.wmessenger.R
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun LoginScreen(
@@ -58,6 +60,37 @@ fun LoginScreen(
     var tapCount by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
+    val loginTitle = stringResource(R.string.login_to_telegram)
+    val scanQrTitle = stringResource(R.string.scan_qr_code)
+    val loginUsingNumber = stringResource(R.string.login_using_number)
+    val enterPhoneTitle = stringResource(R.string.enter_phone_number)
+    val phoneSubtitle = stringResource(R.string.we_will_send_verification_code)
+    val backToQr = stringResource(R.string.back_to_qr_code)
+    val twoStepTitle = stringResource(R.string.two_step_verification)
+    val cloudPasswordDesc = stringResource(R.string.enter_cloud_password)
+    val editPhone = stringResource(R.string.edit_phone_number)
+    val verificationCodeTitle = stringResource(R.string.verification_code)
+    val codeSentDesc = stringResource(R.string.code_sent_to)
+    val loggedInText = stringResource(R.string.welcome_to_wearmessenger)
+    val emailTitle = stringResource(R.string.email_address)
+    val emailDesc = stringResource(R.string.enter_email_address)
+    val emailCodeTitle = stringResource(R.string.email_code)
+    val emailCodeDesc = stringResource(R.string.enter_email_code)
+    val registerTitle = stringResource(R.string.register)
+    val registerDesc = stringResource(R.string.enter_name_to_create_account)
+    val errorTitle = stringResource(R.string.error)
+    val wmAppName = stringResource(R.string.app_name)
+    val cancelText = stringResource(R.string.cancel)
+    val okText = stringResource(R.string.ok)
+    val sendText = stringResource(R.string.send)
+    val submitText = stringResource(R.string.save)
+    val passwordLabel = stringResource(R.string.password)
+    val codeLabel = stringResource(R.string.verification_code)
+    val emailLabel = stringResource(R.string.email_address)
+    val phoneLabel = stringResource(R.string.enter_phone_number)
+    val firstNameLabel = stringResource(R.string.first_name)
+    val lastNameLabel = stringResource(R.string.last_name)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -86,7 +119,7 @@ fun LoginScreen(
                 Spacer(Modifier.width(1.dp))
             }
             Text(
-                text = "Login to Telegram",
+                text = loginTitle,
                 color = Color.White,
                 fontSize = 24.sp,
                 modifier = Modifier.clickable {
@@ -143,7 +176,7 @@ fun LoginScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Scan QR Code:",
+                                text = scanQrTitle,
                                 color = Color.White,
                                 fontSize = 14.sp
                             )
@@ -162,7 +195,7 @@ fun LoginScreen(
                 Spacer(Modifier.height(16.dp))
                 TextButton(onClick = onShowPhoneInput) {
                     Text(
-                        text = "Login using number",
+                        text = loginUsingNumber,
                         color = Color(0xFF2AABEE),
                         fontSize = 12.sp
                     )
@@ -179,13 +212,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Enter Phone Number",
+                            text = enterPhoneTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "We'll send you a verification code",
+                            text = phoneSubtitle,
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -211,7 +244,7 @@ fun LoginScreen(
                             OutlinedTextField(
                                 value = phoneInput,
                                 onValueChange = { phoneInput = it.filter { c -> c.isDigit() }.take(15) },
-                                label = { Text("Phone number") },
+                                label = { Text(phoneLabel) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                 singleLine = true,
                                 modifier = Modifier.weight(0.7f),
@@ -233,13 +266,13 @@ fun LoginScreen(
                                 disabledBackgroundColor = Color(0xFF1A5276)
                             )
                         ) {
-                            Text("Send Code")
+                            Text(sendText)
                         }
 
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = onShowQrCode) {
                             Text(
-                                text = "Back to QR Code",
+                                text = backToQr,
                                 color = Color(0xFF2AABEE),
                                 fontSize = 11.sp
                             )
@@ -258,13 +291,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Two-Step Verification",
+                            text = twoStepTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Enter your cloud password",
+                            text = cloudPasswordDesc,
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -273,7 +306,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = passwordInput,
                             onValueChange = { passwordInput = it },
-                            label = { Text("Password") },
+                            label = { Text(passwordLabel) },
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             singleLine = true,
@@ -302,7 +335,7 @@ fun LoginScreen(
                             Spacer(Modifier.height(8.dp))
                             TextButton(onClick = onResetLogin) {
                                 Text(
-                                    text = "Edit phone number",
+                                    text = editPhone,
                                     color = Color(0xFFFF6B6B),
                                     fontSize = 11.sp
                                 )
@@ -322,13 +355,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Verification Code",
+                            text = verificationCodeTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Code sent to: $phoneNumber",
+                            text = String.format(codeSentDesc, phoneNumber),
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -337,7 +370,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = codeInput,
                             onValueChange = { codeInput = it.filter { c -> c.isDigit() }.take(6) },
-                            label = { Text("Code") },
+                            label = { Text(codeLabel) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -385,13 +418,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "✓ Logged in!",
+                            text = stringResource(R.string.logged_in),
                             color = Color(0xFF81C784),
                             fontSize = 16.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Welcome to WearMessenger",
+                            text = loggedInText,
                             color = Color.White,
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center
@@ -410,13 +443,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Email Address",
+                            text = emailTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Enter your email address to continue",
+                            text = emailDesc,
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -424,7 +457,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = emailInput,
                             onValueChange = { emailInput = it },
-                            label = { Text("Email") },
+                            label = { Text(emailLabel) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -470,13 +503,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Email Code",
+                            text = emailCodeTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Enter the code sent to your email",
+                            text = emailCodeDesc,
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -530,13 +563,13 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Register",
+                            text = registerTitle,
                             color = Color.White,
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "Enter your name to create an account",
+                            text = registerDesc,
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
@@ -544,7 +577,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = firstNameInput,
                             onValueChange = { firstNameInput = it },
-                            label = { Text("First Name") },
+                            label = { Text(firstNameLabel) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
@@ -557,7 +590,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = lastNameInput,
                             onValueChange = { lastNameInput = it },
-                            label = { Text("Last Name") },
+                            label = { Text(lastNameLabel) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
@@ -592,7 +625,7 @@ fun LoginScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "⚠️ Error",
+                            text = errorTitle,
                             color = Color(0xFFFF6B6B),
                             fontSize = 16.sp
                         )
@@ -610,7 +643,7 @@ fun LoginScreen(
 
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "WearMessenger",
+            text = wmAppName,
             color = Color.LightGray,
             fontSize = 10.sp
         )
@@ -624,7 +657,7 @@ fun generateQrCode(content: String, width: Int, height: Int): Bitmap? {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
         for (x in 0 until width) {
             for (y in 0 until height) {
-                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#2A2A2A"))
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.parseColor("#2A2A2A") else android.graphics.Color.WHITE)
             }
         }
         bitmap

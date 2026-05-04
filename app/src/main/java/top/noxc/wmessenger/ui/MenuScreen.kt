@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,12 +25,14 @@ import top.noxc.wmessenger.R
 fun MenuScreen(
     accounts: List<AccountInfo>,
     currentAccountIndex: Int,
+    isAppLockEnabled: Boolean,
     onSwitchAccount: (Int) -> Unit,
     onAddAccount: () -> Unit,
     onLogoutAccount: (Int) -> Unit,
     onContacts: () -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
+    onLockNow: () -> Unit,
     onSwipeUp: () -> Unit
 ) {
     var showAccountDialog by remember { mutableStateOf(false) }
@@ -94,6 +97,30 @@ fun MenuScreen(
             ) {
                 Text(
                     text = label,
+                    color = Color.White,
+                    fontSize = 15.sp
+                )
+            }
+            Divider(color = Color(0xFF222222))
+        }
+
+        if (isAppLockEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onLockNow() }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.wm_ic_lock),
+                    contentDescription = null,
+                    tint = Color(0xFF2AABEE),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.lock_now),
                     color = Color.White,
                     fontSize = 15.sp
                 )

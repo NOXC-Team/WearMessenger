@@ -54,6 +54,7 @@ fun SettingsScreen(
         val menuItems = listOf(
             stringResource(R.string.proxy) to onProxy,
             stringResource(R.string.storage) to onStorage,
+            stringResource(R.string.security) to onSecurity,
             stringResource(R.string.about) to onAbout
         )
         menuItems.forEach { (label, action) ->

@@ -1,25 +1,53 @@
 package top.noxc.wmessenger.ui
 
+import android.graphics.Bitmap
+import android.os.Build
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import top.noxc.wmessenger.BuildConfig
 import top.noxc.wmessenger.R
+import java.util.Hashtable
 
 @Composable
 fun AboutScreen(
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val tdLibVersion = remember {
+        try {
+            val clazz = Class.forName("org.drinkless.tdlib.BuildConfig")
+            clazz.getDeclaredField("VERSION_NAME").get(null) as String
+        } catch (_: Exception) {
+            "Unknown"
+        }
+    }
+
+    val qrCodeBitmap = remember {
+        generateQRCode("https://github.com/NOXC-Team/WearMessenger", 200, 200)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { _, dragAmount ->
                     if (dragAmount > 30f) onBack()
@@ -37,10 +65,42 @@ fun AboutScreen(
         Spacer(Modifier.height(16.dp))
 
         AboutInfoRow(stringResource(R.string.app_name), "WearMessenger")
-        AboutInfoRow("Version", "1.0.0")
-        AboutInfoRow("Platform", "WearOS")
-        AboutInfoRow("Protocol", "TDLib")
-        AboutInfoRow("Developer", "NineOneNet")
+        AboutInfoRow(stringResource(R.string.version), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        AboutInfoRow(stringResource(R.string.build_number), BuildConfig.BUILD_TYPE)
+        AboutInfoRow(stringResource(R.string.tdlib_version), tdLibVersion)
+        AboutInfoRow(stringResource(R.string.platform), "WearOS (Android ${Build.VERSION.RELEASE})")
+        AboutInfoRow(stringResource(R.string.min_sdk), "API 25")
+        AboutInfoRow(stringResource(R.string.target_sdk), "API 35")
+        AboutInfoRow(stringResource(R.string.protocol), "TDLib")
+        AboutInfoRow(stringResource(R.string.developer), "NOXC-Team")
+
+        Spacer(Modifier.height(24.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "NOXC-Team",
+                color = Color.White,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            if (qrCodeBitmap != null) {
+                Image(
+                    bitmap = qrCodeBitmap.asImageBitmap(),
+                    contentDescription = "QR Code",
+                    modifier = Modifier
+                        .size(200.dp)
+                        .background(Color.Black)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -57,4 +117,25 @@ private fun AboutInfoRow(label: String, value: String) {
         Text(text = value, color = Color.LightGray, fontSize = 12.sp)
     }
     Divider(color = Color(0xFF222222))
+}
+
+private fun generateQRCode(content: String, width: Int, height: Int): Bitmap? {
+    return try {
+        val hints = Hashtable<EncodeHintType, Any>()
+        hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
+        hints[EncodeHintType.ERROR_CORRECTION] = com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M
+        hints[EncodeHintType.MARGIN] = 1
+
+        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, width, height, hints)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (_: Exception) {
+        null
+    }
 }

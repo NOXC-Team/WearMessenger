@@ -3,6 +3,8 @@ package top.noxc.wmessenger.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,11 +18,17 @@ import top.noxc.wmessenger.R
 
 @Composable
 fun SecurityScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAppLockSettings: () -> Unit,
+    onDevicesClick: () -> Unit
 ) {
+    val appLockLabel = stringResource(R.string.app_lock)
+    val devicesLabel = stringResource(R.string.devices)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { _, dragAmount ->
                     if (dragAmount > 30f) onBack()
@@ -38,13 +46,13 @@ fun SecurityScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { }
+                .clickable { onDevicesClick() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.devices),
+                text = devicesLabel,
                 color = Color.White,
                 fontSize = 13.sp
             )
@@ -59,13 +67,13 @@ fun SecurityScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { }
+                .clickable { onAppLockSettings() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.app_lock),
+                text = appLockLabel,
                 color = Color.White,
                 fontSize = 13.sp
             )

@@ -29,6 +29,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_ACCOUNT_COUNT = "account_count"
         private const val KEY_CURRENT_ACCOUNT = "current_account"
         private const val KEY_LANGUAGE = "language"
+        private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
+        private const val KEY_APP_LOCK_PASSWORD = "app_lock_password"
+        private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
         private const val MAX_ACCOUNTS = 99
     }
 
@@ -114,6 +117,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _freezeInfo = MutableStateFlow<FreezeInfo?>(null)
     val freezeInfo: StateFlow<FreezeInfo?> = _freezeInfo.asStateFlow()
+
+    private val _isAppLockEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_APP_LOCK_ENABLED, false)
+    )
+    val isAppLockEnabled: StateFlow<Boolean> = _isAppLockEnabled.asStateFlow()
+
+    private val _appLockPassword = MutableStateFlow(
+        prefs.getString(KEY_APP_LOCK_PASSWORD, "") ?: ""
+    )
+
+    private val _autoLockTimeout = MutableStateFlow(
+        prefs.getInt(KEY_AUTO_LOCK_TIMEOUT, 0)
+    )
+    val autoLockTimeout: StateFlow<Int> = _autoLockTimeout.asStateFlow()
+
+    private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
+    val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions.asStateFlow()
+
+    private val _inactiveSessionTtlDays = MutableStateFlow(0)
+    val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays.asStateFlow()
+
+    var lastActiveTime: Long = System.currentTimeMillis()
+        private set
 
     init {
         loadAccountList()
@@ -299,7 +325,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeManager(manager: TdLibManager) {
         viewModelScope.launch {
             manager.authState.collect { state ->
-                if (_currentAccountIndex.value != managers.entries.find { it.value === manager }?.key) return@collect
+                if (manager !== currentManager) return@collect
                 state?.let { onAuthStateChanged(it) }
             }
         }
@@ -370,7 +396,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             manager.qrCodeLink.collect { link ->
                 if (manager !== currentManager) return@collect
-                if (link.isNotEmpty()) {
+                if (link.isNotEmpty() && (_uiState.value.authType == AuthType.QR_CODE || _uiState.value.authType == AuthType.LOADING)) {
                     _uiState.value = _uiState.value.copy(
                         qrCodeLink = link,
                         status = "Scan QR Code"
@@ -793,6 +819,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         managers.clear()
     }
 
+    fun setupAppLock(password: String) {
+        prefs.edit()
+            .putBoolean(KEY_APP_LOCK_ENABLED, true)
+            .putString(KEY_APP_LOCK_PASSWORD, password)
+            .apply()
+        _isAppLockEnabled.value = true
+        _appLockPassword.value = password
+    }
+
+    fun disableAppLock() {
+        prefs.edit()
+            .putBoolean(KEY_APP_LOCK_ENABLED, false)
+            .remove(KEY_APP_LOCK_PASSWORD)
+            .apply()
+        _isAppLockEnabled.value = false
+        _appLockPassword.value = ""
+    }
+
+    fun verifyAppLock(password: String): Boolean {
+        return password == _appLockPassword.value
+    }
+
+    fun setAutoLockTimeout(timeoutSeconds: Int) {
+        prefs.edit().putInt(KEY_AUTO_LOCK_TIMEOUT, timeoutSeconds).apply()
+        _autoLockTimeout.value = timeoutSeconds
+    }
+
+    fun lockNow() {
+        if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty()) {
+            navigateTo(Screen.APP_LOCK)
+        }
+    }
+
+    fun checkAppLock() {
+        if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty()) {
+            if (_currentScreen.value == Screen.APP_LOCK) return
+            val timeout = _autoLockTimeout.value
+            val elapsed = (System.currentTimeMillis() - lastActiveTime) / 1000
+            if (timeout == 0 || elapsed >= timeout) {
+                navigateTo(Screen.APP_LOCK)
+            }
+        }
+    }
+
+    fun updateLastActiveTime() {
+        lastActiveTime = System.currentTimeMillis()
+    }
+
+    fun loadSessions() {
+        currentManager?.loadSessions()
+        viewModelScope.launch {
+            currentManager?.sessions?.collect { _sessions.value = it }
+        }
+        viewModelScope.launch {
+            currentManager?.inactiveSessionTtlDays?.collect { _inactiveSessionTtlDays.value = it }
+        }
+    }
+
+    fun terminateSession(sessionId: Long) {
+        currentManager?.terminateSession(sessionId)
+    }
+
+    fun terminateAllOtherSessions() {
+        currentManager?.terminateAllOtherSessions()
+    }
+
+    fun setInactiveSessionTtl(days: Int) {
+        currentManager?.setInactiveSessionTtl(days)
+    }
+
     fun logout() {
         val idx = _currentAccountIndex.value
         currentManager?.logout()
@@ -910,7 +1006,7 @@ enum class AuthType {
 }
 
 enum class Screen {
-    LOGIN, CHAT_LIST, CHAT, MENU, SETTING, SECURITY, PROXY_LIST, PROXY_ADD, STORAGE, ABOUT, CONTACTS, SEARCH, GALLERY_PICKER, QUIT, FROZEN, QR_CODE_LINK
+    LOGIN, CHAT_LIST, CHAT, MENU, SETTING, SECURITY, PROXY_LIST, PROXY_ADD, STORAGE, ABOUT, CONTACTS, SEARCH, GALLERY_PICKER, QUIT, FROZEN, QR_CODE_LINK, APP_LOCK, APP_LOCK_SET, APP_LOCK_SETTINGS, DEVICES
 }
 
 data class AccountInfo(
