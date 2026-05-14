@@ -40,6 +40,13 @@ google-services.json
 *.zip
 EasyTDlib*/
 image.png
+image2.png
+image2_circular.png
+make_circular.ps1
+compress_icons.py
+CircleIconGenerator.cs
+.github-recovery
+.vscode/
 
 # GitHub workflows
 .github/

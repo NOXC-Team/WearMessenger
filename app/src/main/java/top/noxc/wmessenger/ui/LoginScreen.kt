@@ -57,7 +57,6 @@ fun LoginScreen(
     var lastNameInput by remember { mutableStateOf("") }
     var countryCode by remember { mutableStateOf("86") }
     var phoneInput by remember { mutableStateOf("") }
-    var tapCount by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
     val loginTitle = stringResource(R.string.login_to_telegram)
@@ -121,19 +120,7 @@ fun LoginScreen(
             Text(
                 text = loginTitle,
                 color = Color.White,
-                fontSize = 24.sp,
-                modifier = Modifier.clickable {
-                    tapCount++
-                    if (tapCount >= 5) {
-                        tapCount = 0
-                        onProxySettings?.invoke()
-                    } else {
-                        scope.launch {
-                            kotlinx.coroutines.delay(2000)
-                            tapCount = 0
-                        }
-                    }
-                }
+                fontSize = 24.sp
             )
             Spacer(Modifier.width(1.dp))
         }

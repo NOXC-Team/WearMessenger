@@ -23,13 +23,15 @@ import top.noxc.wmessenger.R
 fun SettingsScreen(
     currentLanguage: String,
     availableLanguages: List<LanguageItem>,
+    experimentsUnlocked: Boolean = false,
     onLanguageChange: (String) -> Unit,
     onProxy: () -> Unit,
     onStorage: () -> Unit,
     onSecurity: () -> Unit,
     onAbout: () -> Unit,
-    onQrCodeLink: () -> Unit,
-    onBack: () -> Unit
+    onExperiments: (() -> Unit)? = null,
+    onBack: () -> Unit,
+    hideSecurity: Boolean = false
 ) {
     val context = LocalContext.current
     var showLanguageDialog by remember { mutableStateOf(false) }
@@ -37,6 +39,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { _, dragAmount ->
                     if (dragAmount > 30f) onBack()
@@ -45,16 +48,17 @@ fun SettingsScreen(
     ) {
         Text(
             text = stringResource(R.string.settings),
-            color = Color.White,
+            color = WmTheme.onBackground,
             fontSize = 14.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
-        Divider(color = Color(0xFF333333))
+        Divider(color = WmTheme.dividerStrong)
 
-        val menuItems = listOf(
+        val menuItems = listOfNotNull(
             stringResource(R.string.proxy) to onProxy,
             stringResource(R.string.storage) to onStorage,
-            stringResource(R.string.security) to onSecurity,
+            if (!hideSecurity) stringResource(R.string.security) to onSecurity else null,
+            if (experimentsUnlocked && onExperiments != null) stringResource(R.string.experiments) to onExperiments else null,
             stringResource(R.string.about) to onAbout
         )
         menuItems.forEach { (label, action) ->
@@ -67,11 +71,11 @@ fun SettingsScreen(
             ) {
                 Text(
                     text = label,
-                    color = Color.White,
+                    color = WmTheme.onBackground,
                     fontSize = 13.sp
                 )
             }
-            Divider(color = Color(0xFF222222))
+            Divider(color = WmTheme.divider)
         }
 
         Row(
@@ -84,37 +88,16 @@ fun SettingsScreen(
         ) {
             Text(
                 text = stringResource(R.string.language),
-                color = Color.White,
+                color = WmTheme.onBackground,
                 fontSize = 13.sp
             )
             Text(
                 text = availableLanguages.find { it.code == currentLanguage }?.displayName ?: currentLanguage,
-                color = Color.Gray,
+                color = WmTheme.textSecondary,
                 fontSize = 12.sp
             )
         }
-        Divider(color = Color(0xFF222222))
-
-        // Row(
-        //     modifier = Modifier
-        //         .fillMaxWidth()
-        //         .clickable { onQrCodeLink() }
-        //         .padding(horizontal = 12.dp, vertical = 10.dp),
-        //     horizontalArrangement = Arrangement.SpaceBetween,
-        //     verticalAlignment = Alignment.CenterVertically
-        // ) {
-        //     Text(
-        //         text = stringResource(R.string.more),
-        //         color = Color.White,
-        //         fontSize = 13.sp
-        //     )
-        //     Text(
-        //         text = "→",
-        //         color = Color.Gray,
-        //         fontSize = 13.sp
-        //     )
-        // }
-        // Divider(color = Color(0xFF222222))
+        Divider(color = WmTheme.divider)
     }
 
     if (showLanguageDialog) {

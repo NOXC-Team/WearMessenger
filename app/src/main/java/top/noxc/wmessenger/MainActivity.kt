@@ -14,14 +14,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.darkColors
+import androidx.compose.material.lightColors
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import top.noxc.wmessenger.ui.AddProxyScreen
@@ -29,6 +33,7 @@ import top.noxc.wmessenger.ui.ChatListScreen
 import top.noxc.wmessenger.ui.ChatScreen
 import top.noxc.wmessenger.ui.ContactsScreen
 import top.noxc.wmessenger.ui.FrozenScreen
+import top.noxc.wmessenger.ui.WelcomeToWearMessengerScreen
 import top.noxc.wmessenger.ui.MenuScreen
 import top.noxc.wmessenger.ui.SettingsScreen
 import top.noxc.wmessenger.ui.QuitScreen
@@ -39,11 +44,13 @@ import top.noxc.wmessenger.ui.GalleryPickerScreen
 import top.noxc.wmessenger.ui.StorageScreen
 import top.noxc.wmessenger.ui.AboutScreen
 import top.noxc.wmessenger.ui.SecurityScreen
-import top.noxc.wmessenger.ui.QRCodeLinkScreen
 import top.noxc.wmessenger.ui.AppLockScreen
+import top.noxc.wmessenger.ui.UISettingsScreen
 import top.noxc.wmessenger.ui.AppLockSetScreen
 import top.noxc.wmessenger.ui.AppLockSettingsScreen
 import top.noxc.wmessenger.ui.DevicesScreen
+import top.noxc.wmessenger.ui.ArchivedChatsScreen
+import top.noxc.wmessenger.ui.ExperimentsScreen
 import top.noxc.wmessenger.core.FreezeInfo
 import java.util.Locale
 
@@ -72,11 +79,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
+        val replyPrefs = getSharedPreferences("pending_reply", MODE_PRIVATE)
+        val replyTimestamp = replyPrefs.getLong("timestamp", 0)
+        if (System.currentTimeMillis() - replyTimestamp < 5000) {
+            val replyText = replyPrefs.getString("text", null)
+            val replyChatId = replyPrefs.getLong("chat_id", -1)
+            val replyAccountIndex = replyPrefs.getInt("account_index", -1)
+            if (replyText != null && replyChatId != -1L && replyAccountIndex != -1) {
+                viewModel.switchAccount(replyAccountIndex)
+                viewModel.pendingReply = Triple(replyChatId, replyText, true)
+                replyPrefs.edit().clear().apply()
+            }
+        }
+
         setContent {
             val viewModel: MainViewModel = viewModel()
             val uiState by viewModel.uiState.collectAsState()
             val currentScreen by viewModel.currentScreen.collectAsState()
             val chats by viewModel.chats.collectAsState()
+            val archivedChats by viewModel.archivedChats.collectAsState()
             val messages by viewModel.messages.collectAsState()
             val isLoadingHistory by viewModel.isLoadingHistory.collectAsState()
             val currentChatId by viewModel.currentChatId.collectAsState()
@@ -97,14 +118,46 @@ class MainActivity : ComponentActivity() {
             val freezeInfo by viewModel.freezeInfo.collectAsState()
             val isAppLockEnabled by viewModel.isAppLockEnabled.collectAsState()
             val autoLockTimeout by viewModel.autoLockTimeout.collectAsState()
+            val clearDataOn10Wrong by viewModel.clearDataOn10Wrong.collectAsState()
+            val wrongAttemptCount by viewModel.wrongAttemptCount.collectAsState()
+            val lockUntilTimestamp by viewModel.lockUntilTimestamp.collectAsState()
+            /* val densityScale by viewModel.densityScale.collectAsState() */
+            val restartRequested by viewModel.restartRequested.collectAsState()
             val sessions by viewModel.sessions.collectAsState()
             val inactiveSessionTtlDays by viewModel.inactiveSessionTtlDays.collectAsState()
             val availableLanguages = viewModel.availableLanguages
             val languageChanged by viewModel.languageChanged.collectAsState()
+            val experimentsUnlocked by viewModel.experimentsUnlocked.collectAsState()
+            val expQuickReply by viewModel.expQuickReply.collectAsState()
+            val expLightMode by viewModel.expLightMode.collectAsState()
+            val expMuteAll by viewModel.expMuteAll.collectAsState()
+            val expNotifications by viewModel.expNotifications.collectAsState()
+            val expAvatarClear by viewModel.expAvatarClear.collectAsState()
+            val expDoubleSwipeExit by viewModel.expDoubleSwipeExit.collectAsState()
+            val muteAllEnabled by viewModel.muteAllEnabled.collectAsState()
+            val isLightMode by viewModel.isLightMode.collectAsState()
+            val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsState()
+
+            // val baseDensity = resources.displayMetrics.density
+            // val baseFontScale = resources.configuration.fontScale
+            // val minDpi = 180f
+            // val minScale = minDpi / baseDensity
+            // val effectiveScale = densityScale.coerceAtLeast(minScale)
+            // val effectiveDensity = baseDensity * effectiveScale
 
             LaunchedEffect(languageChanged) {
                 if (languageChanged) {
                     viewModel.clearLanguageChanged()
+                    val intent = android.content.Intent(this@MainActivity, MainActivity::class.java)
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                    finishAffinity()
+                }
+            }
+
+            LaunchedEffect(restartRequested) {
+                if (restartRequested) {
+                    viewModel.clearRestartRequested()
                     val intent = android.content.Intent(this@MainActivity, MainActivity::class.java)
                     intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
@@ -187,7 +240,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val WmColors = darkColors(
+            val WmDarkColors = darkColors(
                 primary = Color(0xFF2AABEE),
                 primaryVariant = Color(0xFF1A5276),
                 secondary = Color(0xFF2AABEE),
@@ -196,8 +249,25 @@ class MainActivity : ComponentActivity() {
                 background = Color.Black
             )
 
+            val WmLightColors = lightColors(
+                primary = Color(0xFF2AABEE),
+                primaryVariant = Color(0xFF1A5276),
+                secondary = Color(0xFF2AABEE),
+                secondaryVariant = Color(0xFF1A5276),
+                surface = Color(0xFFE8E8E8),
+                background = Color(0xFFE8E8E8),
+                onPrimary = Color.White,
+                onSecondary = Color.White,
+                onSurface = Color.Black,
+                onBackground = Color.Black
+            )
+
+            val useLightMode = expLightMode && isLightMode
+            val WmColors = if (useLightMode) WmLightColors else WmDarkColors
+            val surfaceColor = if (useLightMode) Color(0xFFE8E8E8) else Color.Black
+
             MaterialTheme(colors = WmColors) {
-            Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+            Surface(modifier = Modifier.fillMaxSize(), color = surfaceColor) {
                 LaunchedEffect(isFrozen) {
                     if (isFrozen && currentScreen != Screen.FROZEN && currentScreen != Screen.LOGIN) {
                         viewModel.navigateTo(Screen.FROZEN)
@@ -205,6 +275,46 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (currentScreen) {
+                    Screen.WELCOME -> WelcomeToWearMessengerScreen(
+                        onGetStarted = { viewModel.navigateTo(Screen.LOGIN) },
+                        onSettings = { viewModel.navigateTo(Screen.WELCOME_SETTING) },
+                        onSwipeBack = { viewModel.swipeBackFromWelcome() },
+                        isEnglish = currentLanguage == "en-us"
+                    )
+
+                    Screen.WELCOME_SETTING -> SettingsScreen(
+                        currentLanguage = currentLanguage,
+                        availableLanguages = availableLanguages,
+                        experimentsUnlocked = experimentsUnlocked,
+                        onLanguageChange = { viewModel.setLanguage(it) },
+                        onProxy = {
+                            viewModel.loadProxies()
+                            viewModel.navigateTo(Screen.PROXY_LIST)
+                        },
+                        onStorage = { viewModel.navigateTo(Screen.STORAGE) },
+                        onSecurity = { viewModel.navigateTo(Screen.SECURITY) },
+                        onAbout = { viewModel.navigateTo(Screen.ABOUT) },
+                        onExperiments = { viewModel.navigateTo(Screen.EXPERIMENTS) },
+                        onBack = { viewModel.navigateBack() },
+                        hideSecurity = true
+                    )
+
+                    Screen.SETTING -> SettingsScreen(
+                        currentLanguage = currentLanguage,
+                        availableLanguages = availableLanguages,
+                        experimentsUnlocked = experimentsUnlocked,
+                        onLanguageChange = { viewModel.setLanguage(it) },
+                        onProxy = {
+                            viewModel.loadProxies()
+                            viewModel.navigateTo(Screen.PROXY_LIST)
+                        },
+                        onStorage = { viewModel.navigateTo(Screen.STORAGE) },
+                        onSecurity = { viewModel.navigateTo(Screen.SECURITY) },
+                        onAbout = { viewModel.navigateTo(Screen.ABOUT) },
+                        onExperiments = { viewModel.navigateTo(Screen.EXPERIMENTS) },
+                        onBack = { viewModel.navigateBack() }
+                    )
+
                     Screen.LOGIN -> LoginScreen(
                         authType = uiState.authType,
                         qrLink = uiState.qrCodeLink,
@@ -231,21 +341,34 @@ class MainActivity : ComponentActivity() {
 
                     Screen.CHAT_LIST -> ChatListScreen(
                         chats = chats,
+                        archivedChatsCount = archivedChats.size,
                         savedScrollIndex = viewModel.chatListScrollIndex,
                         savedScrollOffset = viewModel.chatListScrollOffset,
+                        avatarClearEnabled = expAvatarClear,
                         onChatClick = { viewModel.openChat(it) },
                         onOpenMenu = { viewModel.navigateToMenu() },
                         onExit = { viewModel.showExitConfirm() },
+                        onOpenArchivedChats = {
+                            viewModel.loadArchivedChats()
+                            viewModel.navigateTo(Screen.ARCHIVED_CHATS)
+                        },
                         onSaveScrollPosition = { index, offset ->
                             viewModel.chatListScrollIndex = index
                             viewModel.chatListScrollOffset = offset
-                        }
+                        },
+                        onScrollToTop = { viewModel.scrollToTop() },
+                        scrollToTopTrigger = scrollToTopTrigger
                     )
 
                     Screen.MENU -> MenuScreen(
                         accounts = accounts,
                         currentAccountIndex = currentAccountIndex,
                         isAppLockEnabled = isAppLockEnabled,
+                        showLightModeToggle = expLightMode,
+                        isLightMode = isLightMode,
+                        showMuteToggle = muteAllEnabled,
+                        isMuteAllActive = muteAllEnabled,
+                        doubleSwipeExitEnabled = true,
                         onSwitchAccount = { viewModel.switchAccount(it) },
                         onAddAccount = { viewModel.addAccount() },
                         onLogoutAccount = { viewModel.logoutAccount(it) },
@@ -256,7 +379,10 @@ class MainActivity : ComponentActivity() {
                         onSearch = { viewModel.navigateTo(Screen.SEARCH) },
                         onSettings = { viewModel.navigateTo(Screen.SETTING) },
                         onLockNow = { viewModel.lockNow() },
-                        onSwipeUp = { viewModel.navigateBackToChatList() }
+                        onToggleLightMode = { viewModel.toggleLightMode() },
+                        onToggleMuteAll = { viewModel.setMuteAllEnabled(it) },
+                        onSwipeUp = { viewModel.navigateBackToChatList() },
+                        onExit = { viewModel.navigateBackToChatList() }
                     )
 
                     Screen.CONTACTS -> ContactsScreen(
@@ -275,6 +401,7 @@ class MainActivity : ComponentActivity() {
                     Screen.SETTING -> SettingsScreen(
                         currentLanguage = currentLanguage,
                         availableLanguages = availableLanguages,
+                        experimentsUnlocked = experimentsUnlocked,
                         onLanguageChange = { viewModel.setLanguage(it) },
                         onProxy = {
                             viewModel.loadProxies()
@@ -283,7 +410,7 @@ class MainActivity : ComponentActivity() {
                         onStorage = { viewModel.navigateTo(Screen.STORAGE) },
                         onSecurity = { viewModel.navigateTo(Screen.SECURITY) },
                         onAbout = { viewModel.navigateTo(Screen.ABOUT) },
-                        onQrCodeLink = { viewModel.navigateTo(Screen.QR_CODE_LINK) },
+                        onExperiments = { viewModel.navigateTo(Screen.EXPERIMENTS) },
                         onBack = { viewModel.navigateBack() }
                     )
 
@@ -299,12 +426,14 @@ class MainActivity : ComponentActivity() {
                     Screen.APP_LOCK_SETTINGS -> AppLockSettingsScreen(
                         isAppLockEnabled = isAppLockEnabled,
                         autoLockTimeout = autoLockTimeout,
+                        clearDataOn10Wrong = clearDataOn10Wrong,
                         onBack = { viewModel.navigateBack() },
                         onAppLockToggle = { enabled ->
                             if (enabled) viewModel.setupAppLock("") else viewModel.disableAppLock()
                         },
                         onAppLockSet = { viewModel.navigateTo(Screen.APP_LOCK_SET) },
-                        onAutoLockTimeoutChange = { viewModel.setAutoLockTimeout(it) }
+                        onAutoLockTimeoutChange = { viewModel.setAutoLockTimeout(it) },
+                        onClearDataOn10WrongToggle = { viewModel.setClearDataOn10Wrong(it) }
                     )
 
                     Screen.CHAT -> {
@@ -312,6 +441,7 @@ class MainActivity : ComponentActivity() {
                             chats.find { it.id == id }
                         }
                         val chatTitle = currentChatItem?.title ?: "Chat"
+                        val pendingReplyText = viewModel.pendingReply?.takeIf { it.first == currentChatId }?.second
                         ChatScreen(
                             chatTitle = chatTitle,
                             messages = messages,
@@ -322,9 +452,15 @@ class MainActivity : ComponentActivity() {
                             isOnline = currentChatItem?.isOnline ?: false,
                             isTyping = currentChatItem?.isTyping ?: false,
                             isLoadingHistory = isLoadingHistory,
+                            quickReplyEnabled = expQuickReply,
+                            pendingReplyText = pendingReplyText,
+                            onClearPendingReply = { viewModel.pendingReply = null },
                             onBack = { viewModel.backToChatList() },
                             onSendMessage = { text ->
                                 currentChatId?.let { viewModel.sendMessage(it, text) }
+                            },
+                            onSendMessageReply = { replyToId, text ->
+                                currentChatId?.let { viewModel.sendMessageReply(it, replyToId, text) }
                             },
                             onLoadMore = {
                                 currentChatId?.let { viewModel.loadMoreMessages(it) }
@@ -382,7 +518,8 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.ABOUT -> AboutScreen(
-                        onBack = { viewModel.navigateBack() }
+                        onBack = { viewModel.navigateBack() },
+                        onUnlockExperiments = { viewModel.unlockExperiments() }
                     )
 
                     Screen.PROXY_ADD -> AddProxyScreen(
@@ -406,14 +543,21 @@ class MainActivity : ComponentActivity() {
                         onUnderstood = { viewModel.understoodFrozen() }
                     )
 
-                    Screen.QR_CODE_LINK -> QRCodeLinkScreen(
-                        link = uiState.qrCodeLink,
-                        onBack = { viewModel.navigateBack() }
-                    )
-
                     Screen.APP_LOCK -> AppLockScreen(
                         onUnlock = { viewModel.navigateBackToChatList() },
-                        onVerifyPin = { viewModel.verifyAppLock(it) }
+                        onVerifyPin = { viewModel.verifyAppLock(it) },
+                        wrongAttemptCount = wrongAttemptCount,
+                        onSaveWrongAttemptCount = { viewModel.saveWrongAttemptCount(it) },
+                        lockUntilTimestamp = lockUntilTimestamp,
+                        onSaveLockUntilTimestamp = { viewModel.saveLockUntilTimestamp(it) },
+                        clearDataOn10Wrong = clearDataOn10Wrong,
+                        onClearData = { viewModel.clearAppData() },
+                        recoveryCooldownEnd = viewModel.getRecoveryCooldownEnd(),
+                        logoutCooldownEnd = viewModel.getLogoutCooldownEnd(),
+                        onSendRecoveryToBot = { viewModel.sendRecoveryToBot() },
+                        onVerifyRecoveryPin = { viewModel.verifyRecoveryPin(it) },
+                        onResetRecoveryAttempts = { viewModel.resetRecoveryAttempts() },
+                        onLogoutAllAccounts = { viewModel.logoutAllAccounts() }
                     )
 
                     Screen.APP_LOCK_SET -> AppLockSetScreen(
@@ -432,6 +576,58 @@ class MainActivity : ComponentActivity() {
                         onSetInactiveSessionTtl = { viewModel.setInactiveSessionTtl(it) },
                         onBack = { viewModel.navigateBack() }
                     )
+
+                    Screen.ARCHIVED_CHATS -> ArchivedChatsScreen(
+                        archivedChats = archivedChats,
+                        onChatClick = { viewModel.openArchivedChat(it) },
+                        onBack = { viewModel.navigateBack() }
+                    )
+
+                    Screen.EXPERIMENTS -> {
+                        val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.RequestPermission()
+                        ) { granted ->
+                            if (!granted) {
+                                viewModel.setExpNotifications(false)
+                            }
+                        }
+
+                        ExperimentsScreen(
+                            quickReplyEnabled = expQuickReply,
+                            lightModeEnabled = expLightMode,
+                            notificationsEnabled = expNotifications,
+                            muteAllEnabled = muteAllEnabled,
+                            avatarClearEnabled = expAvatarClear,
+                            doubleSwipeExitEnabled = expDoubleSwipeExit,
+                            onQuickReplyChange = { viewModel.setExpQuickReply(it) },
+                            onLightModeChange = { viewModel.setExpLightMode(it) },
+                            onNotificationsChange = { enabled ->
+                                if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        viewModel.setExpNotifications(true)
+                                    }
+                                } else {
+                                    viewModel.setExpNotifications(enabled)
+                                }
+                            },
+                            onMuteAllToggle = { viewModel.setMuteAllEnabled(it) },
+                            onAvatarClearChange = { viewModel.setExpAvatarClear(it) },
+                            onDoubleSwipeExitChange = { viewModel.setExpDoubleSwipeExit(it) },
+                            onBack = { viewModel.navigateBack() },
+                            onDisableExperiments = { viewModel.disableAllExperiments() }
+                        )
+                    }
+
+                    /*
+                    Screen.UI_SETTINGS -> UISettingsScreen(
+                        densityScale = densityScale,
+                        onDensityChangeAndRestart = { viewModel.setDensityScaleAndRestart(it) },
+                        onBack = { viewModel.navigateBack() }
+                    )
+                    */
+                    else -> {}
                 }
             }
             }

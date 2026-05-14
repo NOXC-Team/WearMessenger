@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,9 +28,11 @@ import java.util.Hashtable
 
 @Composable
 fun AboutScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onUnlockExperiments: (() -> Unit)? = null
 ) {
     val tdLibVersion = "1.8.63"
+    var devQrTapCount by remember { mutableStateOf(0) }
 
     Column(
         modifier = Modifier
@@ -43,11 +46,11 @@ fun AboutScreen(
     ) {
         Text(
             text = stringResource(R.string.about),
-            color = Color.White,
+            color = WmTheme.onBackground,
             fontSize = 14.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
-        Divider(color = Color(0xFF333333))
+        Divider(color = WmTheme.dividerStrong)
 
         Spacer(Modifier.height(16.dp))
 
@@ -70,7 +73,7 @@ fun AboutScreen(
         ) {
             Text(
                 text = stringResource(R.string.repository),
-                color = Color.White,
+                color = WmTheme.onBackground,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -92,7 +95,7 @@ fun AboutScreen(
 
             Text(
                 text = "NOXC-Team",
-                color = Color.White,
+                color = WmTheme.onBackground,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -107,6 +110,13 @@ fun AboutScreen(
                     modifier = Modifier
                         .size(160.dp)
                         .background(Color.Black)
+                        .clickable {
+                            devQrTapCount++
+                            if (devQrTapCount >= 10) {
+                                onUnlockExperiments?.invoke()
+                                devQrTapCount = 0
+                            }
+                        }
                 )
             }
         }
@@ -124,10 +134,10 @@ private fun AboutInfoRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, color = Color.White, fontSize = 13.sp)
-        Text(text = value, color = Color.LightGray, fontSize = 12.sp)
+        Text(text = label, color = WmTheme.onBackground, fontSize = 13.sp)
+        Text(text = value, color = WmTheme.textSecondary, fontSize = 12.sp)
     }
-    Divider(color = Color(0xFF222222))
+    Divider(color = WmTheme.divider)
 }
 
 private fun generateQRCode(content: String, width: Int, height: Int): Bitmap? {

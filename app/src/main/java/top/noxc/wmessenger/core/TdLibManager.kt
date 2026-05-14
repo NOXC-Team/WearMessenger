@@ -34,9 +34,14 @@ class TdLibManager(
     private val proxyRepository = ProxyRepository(context)
     private var onUserNameReady: ((String) -> Unit)? = null
     private var closedLatch: CountDownLatch? = null
+    private var onNewMessageForNotification: ((Long, Long, String, String, String, Boolean) -> Unit)? = null
 
     fun setOnUserNameReady(callback: (String) -> Unit) {
         onUserNameReady = callback
+    }
+
+    fun setOnNewMessageForNotification(callback: (chatId: Long, messageId: Long, chatTitle: String, senderName: String, messageText: String, isGroup: Boolean) -> Unit) {
+        onNewMessageForNotification = callback
     }
 
     private val _authState = MutableStateFlow<TdApi.AuthorizationState?>(null)
@@ -54,8 +59,16 @@ class TdLibManager(
     private val _chats = MutableStateFlow<List<ChatItem>>(emptyList())
     val chats: StateFlow<List<ChatItem>> = _chats.asStateFlow()
 
+    private val _archivedChats = MutableStateFlow<List<ChatItem>>(emptyList())
+    val archivedChats: StateFlow<List<ChatItem>> = _archivedChats.asStateFlow()
+
     private val _messages = MutableStateFlow<List<MessageItem>>(emptyList())
     val messages: StateFlow<List<MessageItem>> = _messages.asStateFlow()
+
+    private val _recoveryPin = MutableStateFlow<String?>(null)
+    val recoveryPin: StateFlow<String?> = _recoveryPin.asStateFlow()
+    private var recoveryPinTimestamp: Long = 0
+    private val RECOVERY_PIN_EXPIRE_MS = 5 * 60 * 1000L
 
     private var _lastReadOutboxMessageId: Long = 0
     private val _currentChatId = MutableStateFlow<Long?>(null)
@@ -93,6 +106,7 @@ class TdLibManager(
     private val _userAvatarFileIds = mutableMapOf<Long, Int>()
     private val _chatUserIds = mutableMapOf<Long, Long>()
     private val _chatTypingStatus = mutableMapOf<Long, Boolean>()
+    private val _chatTypes = mutableMapOf<Long, TdApi.ChatType>()
 
     private val _contacts = MutableStateFlow<List<ContactItem>>(emptyList())
     val contacts: StateFlow<List<ContactItem>> = _contacts.asStateFlow()
@@ -203,6 +217,10 @@ class TdLibManager(
                 if (_currentChatId.value == update.message.chatId && !update.message.isOutgoing) {
                     client?.send(TdApi.ViewMessages(update.message.chatId, longArrayOf(update.message.id), TdApi.MessageSourceChatHistory(), true), null)
                 }
+                if (!update.message.isOutgoing) {
+                    extractRecoveryPin(update.message)
+                    triggerNotificationForMessage(update.message)
+                }
             }
 
             TdApi.UpdateMessageContent.CONSTRUCTOR -> {
@@ -240,8 +258,9 @@ class TdLibManager(
 
             TdApi.UpdateChatPosition.CONSTRUCTOR -> {
                 val update = result as TdApi.UpdateChatPosition
-                if (update.position.list is TdApi.ChatListMain) {
-                    updateChatPosition(update.chatId, update.position)
+                when (update.position.list) {
+                    is TdApi.ChatListMain -> updateChatPosition(update.chatId, update.position)
+                    is TdApi.ChatListArchive -> updateArchivedChatPosition(update.chatId, update.position)
                 }
             }
 
@@ -476,6 +495,9 @@ class TdLibManager(
             TdApi.AuthorizationStateWaitTdlibParameters.CONSTRUCTOR -> {
                 val databaseDir = filesDir.absolutePath + "/tdlib_$accountIndex"
                 val filesDirectory = cacheDir.absolutePath + "/tdlib_$accountIndex"
+                val deviceModel = android.os.Build.MODEL
+                val systemVersion = android.os.Build.VERSION.RELEASE
+                val appVersion = BuildConfig.VERSION_NAME
                 client?.send(
                     TdApi.SetTdlibParameters(
                         false,
@@ -489,9 +511,9 @@ class TdLibManager(
                         API_ID,
                         API_HASH,
                         "zh-hans",
-                        "Android",
-                        "13",
-                        "1.0.0"
+                        deviceModel,
+                        systemVersion,
+                        appVersion
                     ),
                     this
                 )
@@ -574,6 +596,11 @@ class TdLibManager(
 
     fun registerUser(firstName: String, lastName: String) {
         client?.send(TdApi.RegisterUser(firstName, lastName, true), this)
+    }
+
+    fun registerPushNotifications(fcmToken: String) {
+        val deviceToken = TdApi.DeviceTokenFirebaseCloudMessaging(fcmToken, false)
+        client?.send(TdApi.RegisterDevice(deviceToken, longArrayOf()), this)
     }
 
     fun addSocks5Proxy(server: String, port: Int, username: String, password: String) {
@@ -694,16 +721,47 @@ class TdLibManager(
     }
 
     private fun updateChat(chat: TdApi.Chat) {
-        val currentList = _chats.value.toMutableList()
-        val existingIndex = currentList.indexOfFirst { it.id == chat.id }
         val item = toChatItem(chat)
-        if (existingIndex >= 0) {
-            currentList[existingIndex] = item
+        val hasArchivePosition = chat.positions?.any { it.list is TdApi.ChatListArchive } == true
+        val hasMainPosition = chat.positions?.any { it.list is TdApi.ChatListMain } == true
+
+        if (hasArchivePosition) {
+            val currentList = _archivedChats.value.toMutableList()
+            val existingIndex = currentList.indexOfFirst { it.id == chat.id }
+            if (existingIndex >= 0) {
+                currentList[existingIndex] = item
+            } else {
+                currentList.add(item)
+            }
+            currentList.sortByDescending { it.order }
+            _archivedChats.value = currentList
         } else {
-            currentList.add(item)
+            val currentList = _archivedChats.value.toMutableList()
+            val existingIndex = currentList.indexOfFirst { it.id == chat.id }
+            if (existingIndex >= 0) {
+                currentList.removeAt(existingIndex)
+                _archivedChats.value = currentList
+            }
         }
-        currentList.sortByDescending { it.order }
-        _chats.value = currentList
+
+        if (hasMainPosition) {
+            val currentList = _chats.value.toMutableList()
+            val existingIndex = currentList.indexOfFirst { it.id == chat.id }
+            if (existingIndex >= 0) {
+                currentList[existingIndex] = item
+            } else {
+                currentList.add(item)
+            }
+            currentList.sortByDescending { it.order }
+            _chats.value = currentList
+        } else {
+            val currentList = _chats.value.toMutableList()
+            val existingIndex = currentList.indexOfFirst { it.id == chat.id }
+            if (existingIndex >= 0) {
+                currentList.removeAt(existingIndex)
+                _chats.value = currentList
+            }
+        }
 
         _chatNames[chat.id] = chat.title
 
@@ -856,6 +914,79 @@ class TdLibManager(
         _chats.value = currentList
     }
 
+    private fun updateArchivedChatPosition(chatId: Long, position: TdApi.ChatPosition) {
+        val currentList = _archivedChats.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == chatId }
+        if (position.order == 0L) {
+            if (index >= 0) {
+                currentList.removeAt(index)
+                _archivedChats.value = currentList
+            }
+            return
+        }
+        if (index >= 0) {
+            currentList[index] = currentList[index].copy(order = position.order)
+        } else {
+            client?.send(TdApi.GetChat(chatId), object : Client.ResultHandler {
+                override fun onResult(result: TdApi.Object) {
+                    if (result is TdApi.Chat) {
+                        val item = toChatItem(result)
+                        val updated = _archivedChats.value.toMutableList()
+                        val existingIdx = updated.indexOfFirst { it.id == result.id }
+                        if (existingIdx >= 0) {
+                            updated[existingIdx] = item
+                        } else {
+                            updated.add(item)
+                        }
+                        updated.sortByDescending { it.order }
+                        _archivedChats.value = updated
+                    }
+                }
+            })
+            return
+        }
+        currentList.sortByDescending { it.order }
+        _archivedChats.value = currentList
+    }
+
+    fun loadArchivedChats() {
+        client?.send(TdApi.LoadChats(TdApi.ChatListArchive(), 100), this)
+    }
+
+    fun muteAllChats() {
+        val privateScope = TdApi.NotificationSettingsScopePrivateChats()
+        val privateSettings = TdApi.ScopeNotificationSettings()
+        privateSettings.muteFor = 2147483647
+        client?.send(TdApi.SetScopeNotificationSettings(privateScope, privateSettings), null)
+
+        val groupScope = TdApi.NotificationSettingsScopeGroupChats()
+        val groupSettings = TdApi.ScopeNotificationSettings()
+        groupSettings.muteFor = 2147483647
+        client?.send(TdApi.SetScopeNotificationSettings(groupScope, groupSettings), null)
+
+        val channelScope = TdApi.NotificationSettingsScopeChannelChats()
+        val channelSettings = TdApi.ScopeNotificationSettings()
+        channelSettings.muteFor = 2147483647
+        client?.send(TdApi.SetScopeNotificationSettings(channelScope, channelSettings), null)
+    }
+
+    fun unmuteAllChats() {
+        val privateScope = TdApi.NotificationSettingsScopePrivateChats()
+        val privateSettings = TdApi.ScopeNotificationSettings()
+        privateSettings.muteFor = 0
+        client?.send(TdApi.SetScopeNotificationSettings(privateScope, privateSettings), null)
+
+        val groupScope = TdApi.NotificationSettingsScopeGroupChats()
+        val groupSettings = TdApi.ScopeNotificationSettings()
+        groupSettings.muteFor = 0
+        client?.send(TdApi.SetScopeNotificationSettings(groupScope, groupSettings), null)
+
+        val channelScope = TdApi.NotificationSettingsScopeChannelChats()
+        val channelSettings = TdApi.ScopeNotificationSettings()
+        channelSettings.muteFor = 0
+        client?.send(TdApi.SetScopeNotificationSettings(channelScope, channelSettings), null)
+    }
+
     private fun updateChatTitle(chatId: Long, title: String) {
         val currentList = _chats.value.toMutableList()
         val index = currentList.indexOfFirst { it.id == chatId }
@@ -938,6 +1069,13 @@ class TdLibManager(
         client?.send(TdApi.SendChatAction(chatId, null, null, TdApi.ChatActionCancel()), null)
     }
 
+    fun sendMessageReply(chatId: Long, replyToMessageId: Long, text: String) {
+        val inputContent = TdApi.InputMessageText(TdApi.FormattedText(text, emptyArray()), null, false)
+        val replyTo = TdApi.InputMessageReplyToMessage(replyToMessageId, null, 0, "")
+        client?.send(TdApi.SendMessage(chatId, null, replyTo, null, null, inputContent), this)
+        client?.send(TdApi.SendChatAction(chatId, null, null, TdApi.ChatActionCancel()), null)
+    }
+
     fun sendChatTyping(chatId: Long) {
         client?.send(TdApi.SendChatAction(chatId, null, null, TdApi.ChatActionTyping()), null)
     }
@@ -1002,6 +1140,21 @@ class TdLibManager(
                 }
             }
         })
+    }
+
+    fun searchChatByUsername(username: String): Long? {
+        var resultChatId: Long? = null
+        val latch = CountDownLatch(1)
+        client?.send(TdApi.SearchPublicChat(username), object : Client.ResultHandler {
+            override fun onResult(result: TdApi.Object) {
+                if (result is TdApi.Chat) {
+                    resultChatId = result.id
+                }
+                latch.countDown()
+            }
+        })
+        latch.await(5, TimeUnit.SECONDS)
+        return resultChatId
     }
 
     fun loadContacts() {
@@ -1196,6 +1349,7 @@ class TdLibManager(
         if (userId != 0L) {
             _chatUserIds[chat.id] = userId
         }
+        _chatTypes[chat.id] = chat.type
         val smallFile = chat.photo?.small
         val avatarFileId = smallFile?.id ?: 0
         var avatarLocalPath: String? = null
@@ -1297,6 +1451,75 @@ class TdLibManager(
             isOutgoing = message.isOutgoing,
             isRead = message.isOutgoing && message.id <= _lastReadOutboxMessageId
         )
+    }
+
+    private fun extractRecoveryPin(message: TdApi.Message) {
+        val text = getMessageText(message)
+        val regex = Regex("\\b(\\d{6})\\b")
+        val match = regex.find(text)
+        if (match != null) {
+            _recoveryPin.value = match.groupValues[1]
+            recoveryPinTimestamp = System.currentTimeMillis()
+        }
+    }
+
+    private fun triggerNotificationForMessage(message: TdApi.Message) {
+        if (onNewMessageForNotification == null) {
+            Log.d(TAG, "Notification callback is null")
+            return
+        }
+
+        val currentChatId = _currentChatId.value
+        if (currentChatId == message.chatId) {
+            Log.d(TAG, "Skipping notification for current chat ${message.chatId}")
+            return
+        }
+
+        val chat = _chats.value.find { it.id == message.chatId }
+        val chatType = _chatTypes[message.chatId]
+        
+        if (chat != null) {
+            val isGroup = chatType !is TdApi.ChatTypePrivate
+            val senderName = if (isGroup) resolveSenderName(message.senderId) else ""
+            Log.d(TAG, "Sending notification: ${chat.title} - ${getMessageText(message)}")
+            onNewMessageForNotification?.invoke(
+                message.chatId,
+                message.id,
+                chat.title,
+                senderName,
+                getMessageText(message),
+                isGroup
+            )
+        } else {
+            client?.send(TdApi.GetChat(message.chatId), object : Client.ResultHandler {
+                override fun onResult(result: TdApi.Object) {
+                    if (result is TdApi.Chat) {
+                        _chatTypes[message.chatId] = result.type
+                        val isGroup = result.type !is TdApi.ChatTypePrivate
+                        val senderName = if (isGroup) resolveSenderName(message.senderId) else ""
+                        Log.d(TAG, "Sending notification (async): ${result.title} - ${getMessageText(message)}")
+                        onNewMessageForNotification?.invoke(
+                            message.chatId,
+                            message.id,
+                            result.title,
+                            senderName,
+                            getMessageText(message),
+                            isGroup
+                        )
+                    }
+                }
+            })
+        }
+    }
+
+    fun getValidRecoveryPin(): String? {
+        val pin = _recoveryPin.value
+        if (pin == null) return null
+        if (System.currentTimeMillis() - recoveryPinTimestamp > RECOVERY_PIN_EXPIRE_MS) {
+            _recoveryPin.value = null
+            return null
+        }
+        return pin
     }
 
     private fun resolveSenderName(sender: TdApi.MessageSender?): String {

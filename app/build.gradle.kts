@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
 }
 
 import java.util.Properties
@@ -13,8 +14,8 @@ android {
         applicationId = "top.noxc.wmessenger"
         minSdk = 25
         targetSdk = 35
-        versionCode = 10102000
-        versionName = "1.1.2"
+        versionCode = 10200000
+        versionName = "1.2.0"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
@@ -42,7 +43,7 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
     }
 
@@ -60,6 +61,20 @@ android {
         buildConfig = true
     }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.0" }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
+            isMinifyEnabled = false
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -78,4 +93,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material:material")
     implementation("com.google.zxing:core:3.5.2")
+    implementation("com.google.firebase:firebase-messaging:23.4.1")
+    implementation("com.google.android.gms:play-services-base:18.3.0")
 }

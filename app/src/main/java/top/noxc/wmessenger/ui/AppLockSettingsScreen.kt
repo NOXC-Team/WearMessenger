@@ -21,10 +21,12 @@ import top.noxc.wmessenger.R
 fun AppLockSettingsScreen(
     isAppLockEnabled: Boolean,
     autoLockTimeout: Int,
+    clearDataOn10Wrong: Boolean,
     onBack: () -> Unit,
     onAppLockToggle: (Boolean) -> Unit,
     onAppLockSet: () -> Unit,
-    onAutoLockTimeoutChange: (Int) -> Unit
+    onAutoLockTimeoutChange: (Int) -> Unit,
+    onClearDataOn10WrongToggle: (Boolean) -> Unit
 ) {
     var showTimeoutDialog by remember { mutableStateOf(false) }
 
@@ -37,6 +39,7 @@ fun AppLockSettingsScreen(
     val minutesLabel = stringResource(R.string.minutes)
     val secLabel = stringResource(R.string.seconds_short)
     val minLabel = stringResource(R.string.minutes_short)
+    val clearDataLabel = stringResource(R.string.clear_data_on_10_wrong)
 
     Column(
         modifier = Modifier
@@ -135,6 +138,33 @@ fun AppLockSettingsScreen(
                     text = "→",
                     color = Color.Gray,
                     fontSize = 13.sp
+                )
+            }
+            Divider(color = Color(0xFF222222))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClearDataOn10WrongToggle(!clearDataOn10Wrong) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = clearDataLabel,
+                    color = Color.White,
+                    fontSize = 13.sp
+                )
+                Switch(
+                    checked = clearDataOn10Wrong,
+                    onCheckedChange = { onClearDataOn10WrongToggle(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = Color(0xFF2AABEE),
+                        checkedThumbColor = Color.White,
+                        uncheckedTrackColor = Color(0xFF333333),
+                        uncheckedThumbColor = Color.Gray
+                    ),
+                    modifier = Modifier.height(24.dp)
                 )
             }
             Divider(color = Color(0xFF222222))

@@ -16,6 +16,8 @@ A lightweight, open-source Telegram client for Wear OS.
 - App Lock with PIN protection
 - Device session management (view and terminate other devices)
 - Storage management (view cache size and clear cache)
+- Double-tap to reply to messages
+- Wear OS native notifications with quick reply
 
 ## Comparison with other Wear OS Telegram clients
 
@@ -30,10 +32,13 @@ A lightweight, open-source Telegram client for Wear OS.
 | **Proxy Support** | ✅ Yes | ? | ✅ Yes |
 | **Multiple Accounts** | ✅ Yes (up to 99) | ? | ✅ Yes |
 | **Digital Crown** | ❌ No | ? | ✅ Yes |
-| **App Lock** | ✅ Yes | ? | ? |
+| **App Lock** | ✅ Yes | ? | ❌ No |
 | **Session Management** | ✅ Yes | ? | ? |
 | **Storage Management** | ✅ Yes (view & clear) | ? | ✅ Yes (clear only) |
-| **APK size (arm64-v8a)** | ~15.3 MB | ~25 MB | ~43.5 MB |
+| **Double-tap to Reply** | ❌ No | ❌ No | ❌ No |
+| **Wear OS Notifications** | ❌ No | ❌ No | ❌ No |
+| **Archived Chats** | ❌ No | ? | ✅ Yes |
+| **APK size (arm64-v8a)** | ~26 MB | ~25 MB | ~43.5 MB |
 
 *Note: WearMessenger focuses on lightweight messaging experience.*
 
@@ -86,6 +91,10 @@ A lightweight, open-source Telegram client for Wear OS.
 ## License
 
 This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
+
+### Important Note
+
+WearMessenger uses [TDLib](https://github.com/tdlib/td), the official Telegram Database Library. TDLib is licensed under the [Boost Software License](https://www.boost.org/LICENSE_1_0.txt). This project is not affiliated with, sponsored by, or endorsed by Telegram or Durov.
 
 ## Acknowledgments
 

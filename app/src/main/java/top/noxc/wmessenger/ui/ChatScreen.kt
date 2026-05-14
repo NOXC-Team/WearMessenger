@@ -9,14 +9,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,11 +29,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -41,6 +48,9 @@ import top.noxc.wmessenger.core.InlineButtonItem
 import top.noxc.wmessenger.core.KeyboardButtonItem
 import top.noxc.wmessenger.core.MessageItem
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ChatScreen(
@@ -53,8 +63,12 @@ fun ChatScreen(
     isOnline: Boolean,
     isTyping: Boolean,
     isLoadingHistory: Boolean,
+    quickReplyEnabled: Boolean = false,
+    pendingReplyText: String? = null,
+    onClearPendingReply: () -> Unit = {},
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onSendMessageReply: (Long, String) -> Unit = { _, _ -> },
     onLoadMore: () -> Unit,
     onInlineButtonClick: (Long, Long, ByteArray) -> Unit,
     onTyping: () -> Unit,
@@ -73,6 +87,15 @@ fun ChatScreen(
     var sizeAtLoadRequest by remember { mutableStateOf(-1) }
 
     var lastTypingSentTime by remember { mutableStateOf(0L) }
+
+    var replyingTo by remember { mutableStateOf<MessageItem?>(null) }
+
+    LaunchedEffect(pendingReplyText) {
+        if (!pendingReplyText.isNullOrEmpty()) {
+            onSendMessage(pendingReplyText)
+            onClearPendingReply()
+        }
+    }
 
     val infiniteTransition = rememberInfiniteTransition()
     val blinkAlpha by infiniteTransition.animateFloat(
@@ -153,9 +176,9 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val titleColor = when {
-                    isTyping -> Color(0xFF2AABEE).copy(alpha = blinkAlpha)
-                    isOnline -> Color.White
-                    else -> Color.Gray
+                    isTyping -> if (WmTheme.isLight) Color(0xFF0FB297).copy(alpha = blinkAlpha) else Color(0xFF00E5CC).copy(alpha = blinkAlpha)
+                    isOnline -> WmTheme.onBackground
+                    else -> WmTheme.textHint
                 }
                 Text(
                     text = chatTitle,
@@ -165,14 +188,14 @@ fun ChatScreen(
                 )
             }
 
-            Divider(color = Color(0xFF333333))
+            Divider(color = WmTheme.dividerStrong)
 
             if (messages.isEmpty()) {
                 Box(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No messages yet", color = Color.LightGray, fontSize = 14.sp)
+                    Text("No messages yet", color = WmTheme.textSecondary, fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(
@@ -193,15 +216,72 @@ fun ChatScreen(
                             }
                         }
                     }
-                    items(messages, key = { it.id }) { msg ->
-                        MessageBubble(msg)
+                    itemsIndexed(messages, key = { _, msg -> msg.id }) { index, msg ->
+                        val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
+                        val showTime = shouldShowTime(msg, nextMsg)
+                        MessageBubble(
+                            msg = msg,
+                            showTime = showTime,
+                            quickReplyEnabled = quickReplyEnabled,
+                            onDoubleTap = {
+                                if (quickReplyEnabled) {
+                                    replyingTo = msg
+                                }
+                            }
+                        )
                     }
                 }
             }
 
-            Divider(color = Color(0xFF333333))
+            Divider(color = WmTheme.dividerStrong)
 
             if (canSend) {
+                if (replyingTo != null) {
+                    Surface(
+                        color = Color(0xFF1A1A1A),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(24.dp)
+                                    .background(Color(0xFF2AABEE))
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = replyingTo?.senderName ?: "",
+                                    color = Color(0xFF2AABEE),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = replyingTo?.text ?: "",
+                                    color = WmTheme.textSecondary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = { replyingTo = null },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Text("\u2715", color = WmTheme.textHint, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    Divider(color = WmTheme.dividerStrong)
+                }
+
                 if (showBotCommands && botCommands.isNotEmpty()) {
                     Surface(
                         color = Color(0xFF1A1A1A),
@@ -214,7 +294,7 @@ fun ChatScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            items(botCommands) { cmd ->
+                            itemsIndexed(botCommands) { _, cmd ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -233,7 +313,7 @@ fun ChatScreen(
                                     Spacer(Modifier.width(6.dp))
                                     Text(
                                         text = cmd.description,
-                                        color = Color.LightGray,
+                                        color = WmTheme.textSecondary,
                                         fontSize = 10.sp,
                                         maxLines = 1
                                     )
@@ -241,7 +321,7 @@ fun ChatScreen(
                             }
                         }
                     }
-                    Divider(color = Color(0xFF333333))
+                    Divider(color = WmTheme.dividerStrong)
                 }
 
                 if (showReplyKeyboard && replyKeyboard.isNotEmpty()) {
@@ -289,7 +369,7 @@ fun ChatScreen(
                         ) {
                             Text(
                                 text = "/",
-                                color = if (showBotCommands) Color(0xFF2AABEE) else Color.Gray,
+                                color = if (showBotCommands) Color(0xFF2AABEE) else WmTheme.textHint,
                                 fontSize = 16.sp
                             )
                         }
@@ -308,11 +388,11 @@ fun ChatScreen(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(max = 40.dp),
-                        placeholder = { Text("Message", color = Color(0xFF888888), fontSize = 11.sp) },
+                        placeholder = { Text("Message", color = WmTheme.textHint, fontSize = 11.sp) },
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            textColor = Color(0xFFB0B0B0),
+                            textColor = WmTheme.onBackground,
                             focusedBorderColor = Color(0xFF2AABEE),
-                            unfocusedBorderColor = Color.Gray,
+                            unfocusedBorderColor = WmTheme.textHint,
                             cursorColor = Color(0xFF2AABEE)
                         ),
                         keyboardOptions = KeyboardOptions(
@@ -322,7 +402,13 @@ fun ChatScreen(
                         keyboardActions = KeyboardActions(
                             onSend = {
                                 if (messageInput.isNotBlank()) {
-                                    onSendMessage(messageInput.trim())
+                                    val replyMsg = replyingTo
+                                    if (replyMsg != null) {
+                                        onSendMessageReply(replyMsg.id, messageInput.trim())
+                                        replyingTo = null
+                                    } else {
+                                        onSendMessage(messageInput.trim())
+                                    }
                                     messageInput = ""
                                 }
                             }
@@ -362,7 +448,7 @@ fun ChatScreen(
                                         ) {
                                             Text(label, color = Color.White, fontSize = 13.sp)
                                         }
-                                        Divider(color = Color(0xFF222222))
+                                        Divider(color = WmTheme.divider)
                                     }
                                 }
                             }
@@ -372,7 +458,13 @@ fun ChatScreen(
                     IconButton(
                         onClick = {
                             if (messageInput.isNotBlank()) {
-                                onSendMessage(messageInput.trim())
+                                val replyMsg = replyingTo
+                                if (replyMsg != null) {
+                                    onSendMessageReply(replyMsg.id, messageInput.trim())
+                                    replyingTo = null
+                                } else {
+                                    onSendMessage(messageInput.trim())
+                                }
                                 messageInput = ""
                             }
                         },
@@ -381,7 +473,7 @@ fun ChatScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.wm_ic_send),
                             contentDescription = "Send",
-                            tint = if (messageInput.isNotBlank()) Color(0xFF2AABEE) else Color.Gray,
+                            tint = if (messageInput.isNotBlank()) Color(0xFF2AABEE) else WmTheme.textHint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -393,7 +485,7 @@ fun ChatScreen(
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Read-only", color = Color.Gray, fontSize = 11.sp)
+                    Text("Read-only", color = WmTheme.textHint, fontSize = 11.sp)
                 }
             }
         }
@@ -401,27 +493,50 @@ fun ChatScreen(
 }
 
 @Composable
-fun MessageBubble(msg: MessageItem) {
+fun MessageBubble(
+    msg: MessageItem,
+    showTime: Boolean,
+    quickReplyEnabled: Boolean = false,
+    onDoubleTap: () -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val maxBubbleWidth = screenWidth * 0.8f
+
     val alignment = if (msg.isOutgoing) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (msg.isOutgoing) Color(0xFF1A5276) else Color(0xFF2A2A2A)
+    val bubbleColor = if (msg.isOutgoing) WmTheme.bubbleOutgoing else WmTheme.bubbleIncoming
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         contentAlignment = alignment
     ) {
         Surface(
             color = bubbleColor,
             shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.widthIn(max = 150.dp)
+            modifier = Modifier
+                .widthIn(max = maxBubbleWidth)
+                .wrapContentWidth(if (msg.isOutgoing) Alignment.End else Alignment.Start)
+                .then(
+                    if (quickReplyEnabled) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = { onDoubleTap() }
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
                 if (!msg.isOutgoing && msg.senderName.isNotEmpty()) {
                     Text(
                         text = msg.senderName,
                         color = Color(0xFF2AABEE),
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        maxLines = 1
                     )
                     Spacer(Modifier.height(2.dp))
                 }
@@ -437,22 +552,22 @@ fun MessageBubble(msg: MessageItem) {
                                 bitmap = bitmap.asImageBitmap(),
                                 contentDescription = "Photo",
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 200.dp),
+                                    .widthIn(max = maxBubbleWidth - 16.dp)
+                                    .heightIn(max = 180.dp),
                                 contentScale = ContentScale.FillWidth
                             )
                             Spacer(Modifier.height(4.dp))
                         }
                     } else {
                         Surface(
-                            color = Color(0xFF333333),
+                            color = WmTheme.dividerStrong,
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .widthIn(max = maxBubbleWidth - 16.dp)
                                 .height(120.dp),
                             shape = MaterialTheme.shapes.small
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text("Loading photo...", color = Color.Gray, fontSize = 11.sp)
+                                Text("Loading photo...", color = WmTheme.textHint, fontSize = 11.sp)
                             }
                         }
                         Spacer(Modifier.height(4.dp))
@@ -462,33 +577,96 @@ fun MessageBubble(msg: MessageItem) {
                 if (msg.videoLocalPath != null) {
                     val file = File(msg.videoLocalPath)
                     if (file.exists()) {
-                        VideoThumbnail(msg, file)
+                        VideoThumbnail(msg, file, maxBubbleWidth - 16.dp)
                     } else {
-                        VideoPlaceholder(msg)
+                        VideoPlaceholder(msg, maxBubbleWidth - 16.dp)
                     }
                 } else if (msg.videoFileId != null && msg.photoLocalPath == null) {
-                    VideoPlaceholder(msg)
+                    VideoPlaceholder(msg, maxBubbleWidth - 16.dp)
                 }
 
                 if (msg.text.isNotEmpty()) {
+                    if (msg.isOutgoing) {
+                        Column(modifier = Modifier.wrapContentWidth()) {
+                            SelectionContainer {
+                                Text(
+                                    text = msg.text,
+                                    color = WmTheme.bubbleText,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End,
+                                modifier = Modifier.wrapContentWidth()
+                            ) {
+                                if (showTime) {
+                                    Text(
+                                        text = formatMessageTime(msg.date),
+                                        color = WmTheme.textHint,
+                                        fontSize = 9.sp
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                }
+                                Icon(
+                                    painter = painterResource(id = R.drawable.wm_ic_double_check),
+                                    contentDescription = if (msg.isRead) "Read" else "Sent",
+                                    tint = if (msg.isRead) Color(0xFF2AABEE) else WmTheme.textHint,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.wrapContentWidth()) {
+                            SelectionContainer {
+                                Text(
+                                    text = msg.text,
+                                    color = WmTheme.bubbleText,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Start
+                                )
+                            }
+                            if (showTime) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start,
+                                    modifier = Modifier.wrapContentWidth()
+                                ) {
+                                    Text(
+                                        text = formatMessageTime(msg.date),
+                                        color = WmTheme.textHint,
+                                        fontSize = 9.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (showTime) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = if (msg.isOutgoing) Arrangement.End else Arrangement.Start,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.wrapContentWidth()
                     ) {
-                        Text(
-                            text = msg.text,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            textAlign = if (msg.isOutgoing) TextAlign.End else TextAlign.Start
-                        )
+                        Spacer(Modifier.weight(1f))
                         if (msg.isOutgoing) {
-                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = formatMessageTime(msg.date),
+                                color = WmTheme.textHint,
+                                fontSize = 9.sp
+                            )
+                            Spacer(Modifier.width(2.dp))
                             Icon(
                                 painter = painterResource(id = R.drawable.wm_ic_double_check),
                                 contentDescription = if (msg.isRead) "Read" else "Sent",
-                                tint = if (msg.isRead) Color(0xFF2AABEE) else Color.Gray,
+                                tint = if (msg.isRead) Color(0xFF2AABEE) else WmTheme.textHint,
                                 modifier = Modifier.size(12.dp)
+                            )
+                        } else {
+                            Text(
+                                text = formatMessageTime(msg.date),
+                                color = WmTheme.textHint,
+                                fontSize = 9.sp
                             )
                         }
                     }
@@ -496,6 +674,19 @@ fun MessageBubble(msg: MessageItem) {
             }
         }
     }
+}
+
+private fun shouldShowTime(current: MessageItem, next: MessageItem?): Boolean {
+    if (next == null) return true
+    val currentTime = current.date / 60
+    val nextTime = next.date / 60
+    return currentTime != nextTime
+}
+
+private fun formatMessageTime(timestamp: Int): String {
+    val date = Date(timestamp.toLong() * 1000)
+    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+    return sdf.format(date)
 }
 
 @Composable
@@ -540,7 +731,7 @@ fun InlineKeyboardPanel(
 }
 
 @Composable
-fun VideoThumbnail(msg: MessageItem, file: File) {
+fun VideoThumbnail(msg: MessageItem, file: File, maxWidth: Dp) {
     val context = LocalContext.current
     val bitmap = remember(msg.videoLocalPath) {
         try {
@@ -551,9 +742,9 @@ fun VideoThumbnail(msg: MessageItem, file: File) {
     }
 
     Surface(
-        color = Color(0xFF333333),
+        color = WmTheme.dividerStrong,
         modifier = Modifier
-            .fillMaxWidth()
+            .widthIn(max = maxWidth)
             .heightIn(max = 200.dp)
             .clickable {
                 val uri = FileProvider.getUriForFile(
@@ -598,11 +789,11 @@ fun VideoThumbnail(msg: MessageItem, file: File) {
 }
 
 @Composable
-fun VideoPlaceholder(msg: MessageItem) {
+fun VideoPlaceholder(msg: MessageItem, maxWidth: Dp) {
     Surface(
         color = Color(0xFF333333),
         modifier = Modifier
-            .fillMaxWidth()
+            .widthIn(max = maxWidth)
             .height(120.dp),
         shape = MaterialTheme.shapes.small
     ) {
@@ -612,7 +803,7 @@ fun VideoPlaceholder(msg: MessageItem) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Video ${msg.videoWidth}x${msg.videoHeight}",
-                    color = Color.Gray,
+                    color = WmTheme.textHint,
                     fontSize = 11.sp
                 )
             }

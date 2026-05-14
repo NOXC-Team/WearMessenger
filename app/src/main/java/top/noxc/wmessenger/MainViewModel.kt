@@ -3,11 +3,17 @@ package top.noxc.wmessenger
 import android.app.Application
 import android.content.res.Configuration
 import android.os.Build
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.messaging.FirebaseMessaging
+import top.noxc.wmessenger.BuildConfig
 import top.noxc.wmessenger.core.ChatItem
 import top.noxc.wmessenger.ui.MediaItem
 import top.noxc.wmessenger.core.ContactItem
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 import top.noxc.wmessenger.core.MessageItem
 import top.noxc.wmessenger.core.ProxyItem
 import java.util.Locale
@@ -16,6 +22,7 @@ import top.noxc.wmessenger.core.BotCommandItem
 import top.noxc.wmessenger.core.KeyboardButtonItem
 import top.noxc.wmessenger.core.InlineButtonItem
 import top.noxc.wmessenger.core.FreezeInfo
+import top.noxc.wmessenger.core.WearNotificationManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,14 +38,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_LANGUAGE = "language"
         private const val KEY_APP_LOCK_ENABLED = "app_lock_enabled"
         private const val KEY_APP_LOCK_PASSWORD = "app_lock_password"
+        private const val KEY_APP_LOCK_SALT = "app_lock_salt"
         private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
+        private const val KEY_WRONG_ATTEMPT_COUNT = "app_lock_wrong_attempts"
+        private const val KEY_LOCK_UNTIL_TIMESTAMP = "app_lock_until_timestamp"
+        private const val KEY_CLEAR_DATA_ON_10_WRONG = "clear_data_on_10_wrong"
+        private const val KEY_RECOVERY_ATTEMPTS = "recovery_attempts"
+        private const val KEY_RECOVERY_COOLDOWN_END = "recovery_cooldown_end"
+        private const val KEY_LOGOUT_COOLDOWN_END = "logout_cooldown_end"
+        private const val KEY_DENSITY_SCALE = "density_scale"
+        private const val KEY_EXPERIMENTS_UNLOCKED = "experiments_unlocked"
+        private const val KEY_EXP_QUICK_REPLY = "exp_quick_reply"
+        private const val KEY_EXP_LIGHT_MODE = "exp_light_mode"
+        private const val KEY_EXP_MUTE_ALL = "exp_mute_all"
+        private const val KEY_EXP_NOTIFICATIONS = "exp_notifications"
+        private const val KEY_EXP_AVATAR_CLEAR = "exp_avatar_clear"
+        private const val KEY_EXP_DOUBLE_SWIPE_EXIT = "exp_double_swipe_exit"
+        private const val KEY_MUTE_ALL_ENABLED = "mute_all_enabled"
+        private const val KEY_LIGHT_MODE_ACTIVE = "light_mode_active"
         private const val MAX_ACCOUNTS = 99
+        private const val LOGOUT_COOLDOWN_FILE = "logout_cooldown.dat"
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, 0)
 
     var chatListScrollIndex = 0
     var chatListScrollOffset = 0
+
+    fun isAppLocked(): Boolean {
+        if (!_isAppLockEnabled.value || _appLockPassword.value.isEmpty()) return false
+        val timeout = prefs.getLong(KEY_AUTO_LOCK_TIMEOUT, 0L)
+        if (timeout == 0L) return false
+        return System.currentTimeMillis() - lastActiveTime > timeout
+    }
+
+    private val _scrollToTopTrigger = MutableStateFlow(0)
+    val scrollToTopTrigger: StateFlow<Int> = _scrollToTopTrigger.asStateFlow()
+
+    fun scrollToTop() {
+        _scrollToTopTrigger.value++
+    }
 
     private val _accountList = MutableStateFlow<List<AccountInfo>>(emptyList())
     val accountList: StateFlow<List<AccountInfo>> = _accountList.asStateFlow()
@@ -58,6 +97,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     private val managers = mutableMapOf<Int, TdLibManager>()
+    private lateinit var notificationManager: WearNotificationManager
 
     private val currentManager: TdLibManager?
         get() = managers[_currentAccountIndex.value]
@@ -75,6 +115,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _chats = MutableStateFlow<List<ChatItem>>(emptyList())
     val chats: StateFlow<List<ChatItem>> = _chats.asStateFlow()
+
+    private val _archivedChats = MutableStateFlow<List<ChatItem>>(emptyList())
+    val archivedChats: StateFlow<List<ChatItem>> = _archivedChats.asStateFlow()
 
     private val _messages = MutableStateFlow<List<MessageItem>>(emptyList())
     val messages: StateFlow<List<MessageItem>> = _messages.asStateFlow()
@@ -103,6 +146,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _mediaList = MutableStateFlow<List<MediaItem>>(emptyList())
     val mediaList: StateFlow<List<MediaItem>> = _mediaList.asStateFlow()
 
+    private fun hashPassword(password: String, salt: String): String {
+        val salted = salt + password + salt
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(salted.toByteArray(Charsets.UTF_8))
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Base64.getEncoder().encodeToString(hash)
+        } else {
+            android.util.Base64.encodeToString(hash, android.util.Base64.NO_WRAP)
+        }
+    }
+
+    private fun generateSalt(): String {
+        val bytes = ByteArray(16)
+        SecureRandom().nextBytes(bytes)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Base64.getEncoder().encodeToString(bytes)
+        } else {
+            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        }
+    }
+
     private val _botCommands = MutableStateFlow<List<BotCommandItem>>(emptyList())
     val botCommands: StateFlow<List<BotCommandItem>> = _botCommands.asStateFlow()
 
@@ -126,11 +190,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _appLockPassword = MutableStateFlow(
         prefs.getString(KEY_APP_LOCK_PASSWORD, "") ?: ""
     )
+    private val _appLockSalt = MutableStateFlow(
+        prefs.getString(KEY_APP_LOCK_SALT, "") ?: ""
+    )
+
+    init {
+        if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty() && _appLockSalt.value.isEmpty()) {
+            val salt = generateSalt()
+            val hash = hashPassword(_appLockPassword.value, salt)
+            prefs.edit()
+                .putString(KEY_APP_LOCK_PASSWORD, hash)
+                .putString(KEY_APP_LOCK_SALT, salt)
+                .apply()
+            _appLockPassword.value = hash
+            _appLockSalt.value = salt
+        }
+    }
 
     private val _autoLockTimeout = MutableStateFlow(
         prefs.getInt(KEY_AUTO_LOCK_TIMEOUT, 0)
     )
     val autoLockTimeout: StateFlow<Int> = _autoLockTimeout.asStateFlow()
+
+    private val _wrongAttemptCount = MutableStateFlow(
+        prefs.getInt(KEY_WRONG_ATTEMPT_COUNT, 0)
+    )
+    val wrongAttemptCount: StateFlow<Int> = _wrongAttemptCount.asStateFlow()
+
+    private val _lockUntilTimestamp = MutableStateFlow(
+        prefs.getLong(KEY_LOCK_UNTIL_TIMESTAMP, 0)
+    )
+    val lockUntilTimestamp: StateFlow<Long> = _lockUntilTimestamp.asStateFlow()
+
+    private val _clearDataOn10Wrong = MutableStateFlow(
+        prefs.getBoolean(KEY_CLEAR_DATA_ON_10_WRONG, false)
+    )
+    val clearDataOn10Wrong: StateFlow<Boolean> = _clearDataOn10Wrong.asStateFlow()
+
+    private val _densityScale = MutableStateFlow(
+        prefs.getFloat(KEY_DENSITY_SCALE, 1.0f)
+    )
+    val densityScale: StateFlow<Float> = _densityScale.asStateFlow()
+
+    private val _experimentsUnlocked = MutableStateFlow(
+        prefs.getBoolean(KEY_EXPERIMENTS_UNLOCKED, false)
+    )
+    val experimentsUnlocked: StateFlow<Boolean> = _experimentsUnlocked.asStateFlow()
+
+    private val _expQuickReply = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_QUICK_REPLY, false)
+    )
+    val expQuickReply: StateFlow<Boolean> = _expQuickReply.asStateFlow()
+
+    private val _expLightMode = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_LIGHT_MODE, false)
+    )
+    val expLightMode: StateFlow<Boolean> = _expLightMode.asStateFlow()
+
+    private val _expMuteAll = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_MUTE_ALL, false)
+    )
+    val expMuteAll: StateFlow<Boolean> = _expMuteAll.asStateFlow()
+
+    private val _expNotifications = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_NOTIFICATIONS, false)
+    )
+    val expNotifications: StateFlow<Boolean> = _expNotifications.asStateFlow()
+
+    private val _expAvatarClear = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_AVATAR_CLEAR, false)
+    )
+    val expAvatarClear: StateFlow<Boolean> = _expAvatarClear.asStateFlow()
+
+    private val _expDoubleSwipeExit = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_DOUBLE_SWIPE_EXIT, false)
+    )
+    val expDoubleSwipeExit: StateFlow<Boolean> = _expDoubleSwipeExit.asStateFlow()
+
+    private val _muteAllEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_MUTE_ALL_ENABLED, false)
+    )
+    val muteAllEnabled: StateFlow<Boolean> = _muteAllEnabled.asStateFlow()
+
+    private val _lightModeActive = MutableStateFlow(
+        prefs.getBoolean(KEY_LIGHT_MODE_ACTIVE, false)
+    )
+    val isLightMode: StateFlow<Boolean> = _lightModeActive.asStateFlow()
+
+    private val _recoveryPin = MutableStateFlow<String?>(null)
+    val recoveryPin: StateFlow<String?> = _recoveryPin.asStateFlow()
 
     private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
     val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions.asStateFlow()
@@ -141,13 +289,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var lastActiveTime: Long = 0L
         private set
 
+    var pendingReply: Triple<Long, String, Boolean>? = null
+
     init {
+        notificationManager = WearNotificationManager(getApplication())
+        if (BuildConfig.DEBUG && !_experimentsUnlocked.value) {
+            _experimentsUnlocked.value = true
+            prefs.edit().putBoolean(KEY_EXPERIMENTS_UNLOCKED, true).apply()
+        }
+        initFcmToken()
         loadAccountList()
         if (_accountList.value.isEmpty()) {
             addAccount()
         } else {
             val savedIndex = prefs.getInt(KEY_CURRENT_ACCOUNT, 0)
             switchAccount(savedIndex.coerceAtMost(_accountList.value.size - 1))
+        }
+        val hasAnyLoggedIn = _accountList.value.any { it.loggedIn }
+        if (!hasAnyLoggedIn) {
+            _currentScreen.value = Screen.WELCOME
         }
     }
 
@@ -235,6 +395,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _canSendMessages.value = existingManager.canSendMessages.value
                 _proxyList.value = existingManager.proxyList.value
                 _connectionState.value = existingManager.connectionState.value
+                existingManager.setOnNewMessageForNotification { chatId, messageId, chatTitle, senderName, messageText, isGroup ->
+                    if (_expNotifications.value && !_muteAllEnabled.value) {
+                        notificationManager.notifyMessage(
+                            notificationId = kotlin.math.abs((chatId % Int.MAX_VALUE).toInt()),
+                            chatId = chatId,
+                            accountIndex = index,
+                            chatTitle = chatTitle,
+                            senderName = senderName,
+                            messageText = messageText,
+                            isGroup = isGroup,
+                            isLocked = isAppLocked()
+                        )
+                    }
+                }
                 if (_isAppLockEnabled.value && _appLockPassword.value.isNotEmpty() && lastActiveTime == 0L) {
                     navigateTo(Screen.APP_LOCK)
                 } else {
@@ -256,6 +430,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         manager.setOnUserNameReady { name ->
             viewModelScope.launch {
                 updateAccountName(index, name)
+            }
+        }
+        manager.setOnNewMessageForNotification { chatId, messageId, chatTitle, senderName, messageText, isGroup ->
+            if (_expNotifications.value && !_muteAllEnabled.value) {
+                notificationManager.notifyMessage(
+                    notificationId = kotlin.math.abs((chatId % Int.MAX_VALUE).toInt()),
+                    chatId = chatId,
+                    accountIndex = index,
+                    chatTitle = chatTitle,
+                    senderName = senderName,
+                    messageText = messageText,
+                    isGroup = isGroup,
+                    isLocked = isAppLocked()
+                )
             }
         }
         manager.init()
@@ -314,9 +502,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             prefs.edit()
                 .putBoolean(KEY_APP_LOCK_ENABLED, false)
                 .remove(KEY_APP_LOCK_PASSWORD)
+                .remove(KEY_APP_LOCK_SALT)
                 .apply()
             _isAppLockEnabled.value = false
             _appLockPassword.value = ""
+            _appLockSalt.value = ""
         }
         if (_currentAccountIndex.value == index) {
             _uiState.value = UiState()
@@ -346,6 +536,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             manager.chats.collect { list ->
                 if (manager !== currentManager) return@collect
                 _chats.value = list
+            }
+        }
+
+        viewModelScope.launch {
+            manager.archivedChats.collect { list ->
+                if (manager !== currentManager) return@collect
+                _archivedChats.value = list
             }
         }
 
@@ -449,6 +646,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             manager.freezeInfo.collect { info ->
                 if (manager !== currentManager) return@collect
                 _freezeInfo.value = info
+            }
+        }
+
+        viewModelScope.launch {
+            manager.recoveryPin.collect { pin ->
+                if (manager !== currentManager) return@collect
+                if (pin != null) {
+                    _recoveryPin.value = pin
+                }
             }
         }
 
@@ -737,6 +943,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(Screen.QUIT)
     }
 
+    fun swipeBackFromWelcome() {
+        navigateTo(Screen.QUIT)
+    }
+
     fun navigateBack() {
         if (navStack.isNotEmpty()) {
             _currentScreen.value = navStack.removeAt(navStack.size - 1)
@@ -766,6 +976,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         currentManager?.sendMessage(chatId, text)
     }
 
+    fun sendMessageReply(chatId: Long, replyToMessageId: Long, text: String) {
+        currentManager?.sendMessageReply(chatId, replyToMessageId, text)
+    }
+
     fun sendChatTyping(chatId: Long) {
         currentManager?.sendChatTyping(chatId)
     }
@@ -776,6 +990,99 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadMoreMessages(chatId: Long) {
         currentManager?.loadMoreMessages(chatId)
+    }
+
+    fun loadArchivedChats() {
+        currentManager?.loadArchivedChats()
+    }
+
+    fun openArchivedChat(chatId: Long) {
+        currentManager?.openChat(chatId)
+        navigateTo(Screen.CHAT)
+    }
+
+    fun unlockExperiments() {
+        _experimentsUnlocked.value = true
+        prefs.edit().putBoolean(KEY_EXPERIMENTS_UNLOCKED, true).apply()
+    }
+
+    fun setExpQuickReply(enabled: Boolean) {
+        _expQuickReply.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_QUICK_REPLY, enabled).apply()
+    }
+
+    fun setExpLightMode(enabled: Boolean) {
+        _expLightMode.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_LIGHT_MODE, enabled).apply()
+    }
+
+    fun setExpMuteAll(enabled: Boolean) {
+        _expMuteAll.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_MUTE_ALL, enabled).apply()
+        if (!enabled) {
+            _muteAllEnabled.value = false
+            prefs.edit().putBoolean(KEY_MUTE_ALL_ENABLED, false).apply()
+        }
+    }
+
+    fun setExpNotifications(enabled: Boolean) {
+        _expNotifications.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_NOTIFICATIONS, enabled).apply()
+        if (!enabled) {
+            _muteAllEnabled.value = false
+            prefs.edit().putBoolean(KEY_MUTE_ALL_ENABLED, false).apply()
+            currentManager?.unmuteAllChats()
+            notificationManager.cancelAll()
+        }
+    }
+
+    fun setExpAvatarClear(enabled: Boolean) {
+        _expAvatarClear.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_AVATAR_CLEAR, enabled).apply()
+    }
+
+    fun setExpDoubleSwipeExit(enabled: Boolean) {
+        _expDoubleSwipeExit.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_DOUBLE_SWIPE_EXIT, enabled).apply()
+    }
+
+    fun disableAllExperiments() {
+        _expQuickReply.value = false
+        _expLightMode.value = false
+        _expMuteAll.value = false
+        _expNotifications.value = false
+        _expAvatarClear.value = false
+        _expDoubleSwipeExit.value = false
+        _muteAllEnabled.value = false
+        _experimentsUnlocked.value = false
+        prefs.edit()
+            .putBoolean(KEY_EXP_QUICK_REPLY, false)
+            .putBoolean(KEY_EXP_LIGHT_MODE, false)
+            .putBoolean(KEY_EXP_MUTE_ALL, false)
+            .putBoolean(KEY_EXP_NOTIFICATIONS, false)
+            .putBoolean(KEY_EXP_AVATAR_CLEAR, false)
+            .putBoolean(KEY_EXP_DOUBLE_SWIPE_EXIT, false)
+            .putBoolean(KEY_MUTE_ALL_ENABLED, false)
+            .putBoolean(KEY_EXPERIMENTS_UNLOCKED, false)
+            .apply()
+        currentManager?.unmuteAllChats()
+        notificationManager.cancelAll()
+    }
+
+    fun setMuteAllEnabled(enabled: Boolean) {
+        _muteAllEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_MUTE_ALL_ENABLED, enabled).apply()
+        if (enabled) {
+            currentManager?.muteAllChats()
+            notificationManager.cancelAll()
+        } else {
+            currentManager?.unmuteAllChats()
+        }
+    }
+
+    fun toggleLightMode() {
+        _lightModeActive.value = !_lightModeActive.value
+        prefs.edit().putBoolean(KEY_LIGHT_MODE_ACTIVE, _lightModeActive.value).apply()
     }
 
     val isLoadingHistory: StateFlow<Boolean>
@@ -836,12 +1143,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setupAppLock(password: String) {
+        val salt = generateSalt()
+        val hash = hashPassword(password, salt)
         prefs.edit()
             .putBoolean(KEY_APP_LOCK_ENABLED, true)
-            .putString(KEY_APP_LOCK_PASSWORD, password)
+            .putString(KEY_APP_LOCK_PASSWORD, hash)
+            .putString(KEY_APP_LOCK_SALT, salt)
             .apply()
         _isAppLockEnabled.value = true
-        _appLockPassword.value = password
+        _appLockPassword.value = hash
+        _appLockSalt.value = salt
         lastActiveTime = 0L
     }
 
@@ -849,13 +1160,177 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit()
             .putBoolean(KEY_APP_LOCK_ENABLED, false)
             .remove(KEY_APP_LOCK_PASSWORD)
+            .remove(KEY_APP_LOCK_SALT)
             .apply()
         _isAppLockEnabled.value = false
         _appLockPassword.value = ""
+        _appLockSalt.value = ""
     }
 
     fun verifyAppLock(password: String): Boolean {
-        return password == _appLockPassword.value
+        val hash = hashPassword(password, _appLockSalt.value)
+        if (hash == _appLockPassword.value) {
+            val cooldownFile = java.io.File(getApplication<android.app.Application>().filesDir, "logout_cooldown.dat")
+            cooldownFile.delete()
+            prefs.edit()
+                .putInt(KEY_RECOVERY_ATTEMPTS, 0)
+                .putLong(KEY_RECOVERY_COOLDOWN_END, 0)
+                .apply()
+            return true
+        }
+        return false
+    }
+
+    fun saveWrongAttemptCount(count: Int) {
+        prefs.edit().putInt(KEY_WRONG_ATTEMPT_COUNT, count).apply()
+        _wrongAttemptCount.value = count
+    }
+
+    fun saveLockUntilTimestamp(timestamp: Long) {
+        prefs.edit().putLong(KEY_LOCK_UNTIL_TIMESTAMP, timestamp).apply()
+        _lockUntilTimestamp.value = timestamp
+    }
+
+    fun setClearDataOn10Wrong(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CLEAR_DATA_ON_10_WRONG, enabled).apply()
+        _clearDataOn10Wrong.value = enabled
+    }
+
+    fun clearAppData() {
+        val activity = getApplication<Application>()
+        val activityManager = activity.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        activityManager.clearApplicationUserData()
+    }
+
+    fun getRecoveryAttempts(): Int {
+        return prefs.getInt(KEY_RECOVERY_ATTEMPTS, 0)
+    }
+
+    fun getRecoveryCooldownEnd(): Long {
+        return prefs.getLong(KEY_RECOVERY_COOLDOWN_END, 0)
+    }
+
+    fun getLogoutCooldownEnd(): Long {
+        val app = getApplication<Application>()
+        val file = java.io.File(app.filesDir, LOGOUT_COOLDOWN_FILE)
+        return if (file.exists()) {
+            try {
+                file.readText().toLong()
+            } catch (e: Exception) {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
+    private fun saveLogoutCooldownEnd(endTime: Long) {
+        val app = getApplication<Application>()
+        val file = java.io.File(app.filesDir, LOGOUT_COOLDOWN_FILE)
+        file.writeText(endTime.toString())
+    }
+
+    fun resetRecoveryAttempts() {
+        prefs.edit()
+            .putInt(KEY_RECOVERY_ATTEMPTS, 0)
+            .putLong(KEY_RECOVERY_COOLDOWN_END, 0)
+            .apply()
+    }
+
+    fun incrementRecoveryAttempts() {
+        val current = prefs.getInt(KEY_RECOVERY_ATTEMPTS, 0)
+        prefs.edit().putInt(KEY_RECOVERY_ATTEMPTS, current + 1).apply()
+    }
+
+    fun setRecoveryCooldown(seconds: Long) {
+        prefs.edit().putLong(KEY_RECOVERY_COOLDOWN_END, System.currentTimeMillis() + seconds * 1000).apply()
+    }
+
+    fun setLogoutCooldown(seconds: Long) {
+        prefs.edit().putLong(KEY_LOGOUT_COOLDOWN_END, System.currentTimeMillis() + seconds * 1000).apply()
+    }
+
+    fun logoutAllAccounts(): Boolean {
+        val cooldownEnd = getLogoutCooldownEnd()
+        if (System.currentTimeMillis() < cooldownEnd) {
+            return false
+        }
+        val newCooldownEnd = System.currentTimeMillis() + 3 * 24 * 3600 * 1000
+        saveLogoutCooldownEnd(newCooldownEnd)
+        val wasAppLockEnabled = _isAppLockEnabled.value
+        val appLockPassword = _appLockPassword.value
+        val appLockSalt = _appLockSalt.value
+        val currentLang = _currentLanguage.value
+        val editor = prefs.edit()
+        editor.clear()
+        editor.putString(KEY_LANGUAGE, currentLang)
+        if (wasAppLockEnabled && appLockPassword.isNotEmpty()) {
+            editor.putBoolean(KEY_APP_LOCK_ENABLED, true)
+            editor.putString(KEY_APP_LOCK_PASSWORD, appLockPassword)
+            editor.putString(KEY_APP_LOCK_SALT, appLockSalt)
+        }
+        editor.apply()
+        if (wasAppLockEnabled && appLockPassword.isNotEmpty()) {
+            _isAppLockEnabled.value = true
+            _appLockPassword.value = appLockPassword
+            _appLockSalt.value = appLockSalt
+        }
+        managers.values.forEach { it.close() }
+        managers.clear()
+        _accountList.value = emptyList()
+        _currentAccountIndex.value = 0
+        _chats.value = emptyList()
+        _archivedChats.value = emptyList()
+        _messages.value = emptyList()
+        _currentChatId.value = null
+        _wrongAttemptCount.value = 0
+        _lockUntilTimestamp.value = 0
+        _languageChanged.value = true
+        return true
+    }
+
+    fun sendRecoveryToBot() {
+        viewModelScope.launch {
+            val result = currentManager?.searchChatByUsername("@WearMessenger_Bot")
+            if (result != null) {
+                currentManager?.sendMessage(result, "/recovery")
+            }
+        }
+    }
+
+    fun verifyRecoveryPin(pin: String): Boolean {
+        if (pin.length != 6) return false
+        
+        val attempts = getRecoveryAttempts()
+        if (attempts >= 3) {
+            setRecoveryCooldown(7 * 24 * 3600)
+            return false
+        }
+        
+        val expectedPin = _recoveryPin.value
+        if (expectedPin == null || pin != expectedPin) {
+            incrementRecoveryAttempts()
+            if (attempts + 1 >= 3) {
+                setRecoveryCooldown(7 * 24 * 3600)
+            }
+            return false
+        }
+        
+        prefs.edit()
+            .remove(KEY_APP_LOCK_PASSWORD)
+            .putBoolean(KEY_APP_LOCK_ENABLED, false)
+            .putInt(KEY_WRONG_ATTEMPT_COUNT, 0)
+            .putLong(KEY_LOCK_UNTIL_TIMESTAMP, 0)
+            .putInt(KEY_RECOVERY_ATTEMPTS, 0)
+            .putLong(KEY_RECOVERY_COOLDOWN_END, 0)
+            .apply()
+        _isAppLockEnabled.value = false
+        _appLockPassword.value = ""
+        _wrongAttemptCount.value = 0
+        _lockUntilTimestamp.value = 0
+        _recoveryPin.value = null
+        
+        return true
     }
 
     fun setAutoLockTimeout(timeoutSeconds: Int) {
@@ -930,6 +1405,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         android.os.Process.killProcess(android.os.Process.myPid())
     }
 
+    private fun initFcmToken() {
+        if (!isGooglePlayServicesAvailable()) return
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                Log.d("FCM", "FCM Token: $token")
+                currentManager?.registerPushNotifications(token)
+            } else {
+                Log.w("FCM", "Fetching FCM token failed", task.exception)
+            }
+        }
+    }
+
+    private fun isGooglePlayServicesAvailable(): Boolean {
+        return try {
+            com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                .isGooglePlayServicesAvailable(getApplication()) == com.google.android.gms.common.ConnectionResult.SUCCESS
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun showExitConfirm() {
         navigateTo(Screen.QUIT)
     }
@@ -986,12 +1483,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         currentManager?.pingProxy(proxyId, callback)
     }
 
+    fun setDensityScale(scale: Float) {
+        prefs.edit().putFloat(KEY_DENSITY_SCALE, scale).apply()
+        _densityScale.value = scale
+    }
+
     fun loadProxies() {
         currentManager?.loadProxies()
     }
 
     private val _languageChanged = MutableStateFlow(false)
     val languageChanged: StateFlow<Boolean> = _languageChanged.asStateFlow()
+
+    private val _restartRequested = MutableStateFlow(false)
+    val restartRequested: StateFlow<Boolean> = _restartRequested.asStateFlow()
 
     fun setLanguage(code: String) {
         prefs.edit().putString(KEY_LANGUAGE, code).apply()
@@ -1014,6 +1519,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearLanguageChanged() {
         _languageChanged.value = false
     }
+
+    fun setDensityScaleAndRestart(scale: Float) {
+        prefs.edit().putFloat(KEY_DENSITY_SCALE, scale).apply()
+        _densityScale.value = scale
+        _restartRequested.value = true
+    }
+
+    fun clearRestartRequested() {
+        _restartRequested.value = false
+    }
 }
 
 data class UiState(
@@ -1031,7 +1546,7 @@ enum class AuthType {
 }
 
 enum class Screen {
-    LOGIN, CHAT_LIST, CHAT, MENU, SETTING, SECURITY, PROXY_LIST, PROXY_ADD, STORAGE, ABOUT, CONTACTS, SEARCH, GALLERY_PICKER, QUIT, FROZEN, QR_CODE_LINK, APP_LOCK, APP_LOCK_SET, APP_LOCK_SETTINGS, DEVICES
+    WELCOME, LOGIN, CHAT_LIST, CHAT, MENU, SETTING, WELCOME_SETTING, SECURITY, PROXY_LIST, PROXY_ADD, STORAGE, ABOUT, CONTACTS, SEARCH, GALLERY_PICKER, QUIT, FROZEN, APP_LOCK, APP_LOCK_SET, APP_LOCK_SETTINGS, DEVICES, ARCHIVED_CHATS, UI_SETTINGS, EXPERIMENTS
 }
 
 data class AccountInfo(

@@ -1,6 +1,7 @@
 package top.noxc.wmessenger.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -34,12 +35,17 @@ import java.io.File
 @Composable
 fun ChatListScreen(
     chats: List<ChatItem>,
+    archivedChatsCount: Int,
     savedScrollIndex: Int,
     savedScrollOffset: Int,
+    avatarClearEnabled: Boolean,
     onChatClick: (Long) -> Unit,
     onOpenMenu: () -> Unit,
     onExit: () -> Unit,
-    onSaveScrollPosition: (Int, Int) -> Unit
+    onOpenArchivedChats: () -> Unit,
+    onSaveScrollPosition: (Int, Int) -> Unit,
+    onScrollToTop: () -> Unit = {},
+    scrollToTopTrigger: Int = 0
 ) {
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = savedScrollIndex,
@@ -48,6 +54,10 @@ fun ChatListScreen(
 
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
         onSaveScrollPosition(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+    }
+
+    LaunchedEffect(scrollToTopTrigger) {
+        listState.animateScrollToItem(0)
     }
 
     var overscrollY by remember { mutableStateOf(0f) }
@@ -88,25 +98,26 @@ fun ChatListScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clickable { onScrollToTop() },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = stringResource(R.string.app_name),
-                color = Color.White,
+                color = WmTheme.onBackground,
                 fontSize = 14.sp
             )
         }
 
-        Divider(color = Color(0xFF333333))
+        Divider(color = WmTheme.dividerStrong)
 
         if (chats.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(stringResource(R.string.loading), color = Color.LightGray, fontSize = 14.sp)
+                Text(stringResource(R.string.loading), color = WmTheme.textSecondary, fontSize = 14.sp)
             }
         } else {
             LazyColumn(
@@ -116,8 +127,55 @@ fun ChatListScreen(
                 items(chats) { chat ->
                     ChatListItem(
                         chat = chat,
+                        avatarClearEnabled = avatarClearEnabled,
                         onClick = { onChatClick(chat.id) }
                     )
+                }
+                if (archivedChatsCount > 0) {
+                    item {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenArchivedChats() },
+                            color = Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    color = if (WmTheme.isLight) Color(0xFFBDBDBD) else Color(0xFF555555),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "\u2B9E",
+                                            color = WmTheme.onBackground,
+                                            fontSize = 16.sp
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = stringResource(R.string.archived_chats),
+                                    color = WmTheme.onBackground,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    text = archivedChatsCount.toString(),
+                                    color = WmTheme.textSecondary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Divider(color = WmTheme.divider)
+                    }
                 }
             }
         }
@@ -127,6 +185,7 @@ fun ChatListScreen(
 @Composable
 fun ChatListItem(
     chat: ChatItem,
+    avatarClearEnabled: Boolean,
     onClick: () -> Unit
 ) {
     val avatarBitmap by produceState<android.graphics.Bitmap?>(
@@ -154,6 +213,16 @@ fun ChatListItem(
         value = null
     }
 
+    val infiniteTransition = rememberInfiniteTransition()
+    val blinkAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 600),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -175,7 +244,7 @@ fun ChatListItem(
                 androidx.compose.foundation.Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = chat.title,
-                    modifier = if (chat.isOnline) avatarModifier else avatarModifier.blur(6.dp),
+                    modifier = if (avatarClearEnabled || chat.isOnline) avatarModifier else avatarModifier.blur(6.dp),
                     contentScale = ContentScale.Crop
                 )
             } else {
@@ -187,7 +256,7 @@ fun ChatListItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = chat.title,
-                    color = Color.White,
+                    color = WmTheme.onBackground,
                     fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -195,7 +264,7 @@ fun ChatListItem(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = if (chat.isTyping) stringResource(R.string.typing) else chat.lastMessage,
-                    color = if (chat.isTyping) Color(0xFF2AABEE) else Color.LightGray,
+                    color = if (chat.isTyping) Color(0xFF0FB297).copy(alpha = blinkAlpha) else WmTheme.textSecondary,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -223,7 +292,7 @@ fun ChatListItem(
         }
     }
 
-    Divider(color = Color(0xFF222222))
+    Divider(color = WmTheme.divider)
 }
 
 @Composable
@@ -239,6 +308,60 @@ private fun AvatarPlaceholder(title: String, modifier: Modifier) {
                 color = Color.Black,
                 fontSize = 16.sp
             )
+        }
+    }
+}
+
+@Composable
+fun ArchivedChatsScreen(
+    archivedChats: List<ChatItem>,
+    onChatClick: (Long) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { _, dragAmount ->
+                    if (dragAmount > 30f) onBack()
+                }
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.archived_chats),
+                color = WmTheme.onBackground,
+                fontSize = 14.sp
+            )
+        }
+
+        Divider(color = WmTheme.dividerStrong)
+
+        if (archivedChats.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(stringResource(R.string.loading), color = WmTheme.textSecondary, fontSize = 14.sp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(archivedChats) { chat ->
+                    ChatListItem(
+                        chat = chat,
+                        avatarClearEnabled = false,
+                        onClick = { onChatClick(chat.id) }
+                    )
+                }
+            }
         }
     }
 }

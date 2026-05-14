@@ -104,25 +104,42 @@ fun GalleryPickerScreen(
 private fun MediaThumbnail(item: MediaItem, onClick: () -> Unit) {
     val context = LocalContext.current
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(item.uri) {
+        if (isLoading) return@LaunchedEffect
+        isLoading = true
+        bitmap = null
+
         try {
             val uri = android.net.Uri.parse(item.uri)
             if (item.isVideo) {
                 val retriever = android.media.MediaMetadataRetriever()
-                retriever.setDataSource(context, uri)
-                bitmap = retriever.getFrameAtTime(
-                    0,
-                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                )
-                retriever.release()
+                try {
+                    retriever.setDataSource(context, uri)
+                    bitmap = retriever.getFrameAtTime(
+                        0,
+                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    )
+                } catch (_: Exception) {
+                } finally {
+                    try {
+                        retriever.release()
+                    } catch (_: Exception) {
+                    }
+                }
             } else {
                 context.contentResolver.openInputStream(uri)?.use { input ->
-                    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = 4
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
                     bitmap = BitmapFactory.decodeStream(input, null, options)
                 }
             }
         } catch (_: Exception) {
+        } finally {
+            isLoading = false
         }
     }
 
@@ -133,22 +150,45 @@ private fun MediaThumbnail(item: MediaItem, onClick: () -> Unit) {
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        bitmap?.let { b ->
+        if (bitmap != null) {
             androidx.compose.foundation.Image(
-                bitmap = b.asImageBitmap(),
+                bitmap = bitmap!!.asImageBitmap(),
                 contentDescription = item.displayName,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
             )
-        } ?: run {
-            Text("?", color = Color.Gray, fontSize = 20.sp)
+        } else {
+            Surface(
+                color = Color(0xFF2A2A2A),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (item.isVideo) "🎬" else "🖼️",
+                        color = Color.Gray,
+                        fontSize = 24.sp
+                    )
+                }
+            }
         }
         if (item.isVideo) {
-            Text(
-                text = "▶",
-                color = Color.White,
-                fontSize = 18.sp,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            Surface(
+                color = Color(0x80000000),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "▶",
+                        color = Color.White,
+                        fontSize = 16.sp
+                    )
+                }
+            }
         }
     }
 }
