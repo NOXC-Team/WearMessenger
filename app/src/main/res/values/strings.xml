@@ -172,4 +172,13 @@
     <string name="welcome_title">Welcome to WearMessenger</string>
     <string name="get_started">Get Started</string>
     <string name="tap_to_change_language">Tap to change language ---></string>
+
+    <!-- Translation Privacy Dialog -->
+    <string name="translation_privacy_title">Translation Privacy Notice</string>
+    <string name="translation_privacy_desc">This feature sends your message text to third-party translation providers (Google/Bing). They may collect and store the original text and translation results to improve their services. Your data will be transmitted over the internet and processed on their servers.</string>
+    <string name="translation_privacy_policies">Privacy Policies:</string>
+    <string name="translation_privacy_acknowledge">By enabling this feature, you acknowledge and accept the above privacy implications. You can disable translation at any time from Experiments settings.</string>
+    <string name="translation_privacy_wait">Please wait %1$ds…</string>
+    <string name="translation_privacy_proceed">You may now proceed</string>
+    <string name="translation_privacy_enable">Enable Translation</string>
 </resources>

@@ -38,6 +38,7 @@ fun ChatListScreen(
     archivedChatsCount: Int,
     savedScrollIndex: Int,
     savedScrollOffset: Int,
+    restoreScrollTrigger: Int = 0,
     avatarClearEnabled: Boolean,
     onChatClick: (Long) -> Unit,
     onOpenMenu: () -> Unit,
@@ -51,6 +52,12 @@ fun ChatListScreen(
         initialFirstVisibleItemIndex = savedScrollIndex,
         initialFirstVisibleItemScrollOffset = savedScrollOffset
     )
+
+    LaunchedEffect(restoreScrollTrigger) {
+        if (savedScrollIndex > 0 || savedScrollOffset > 0) {
+            listState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
 
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
         onSaveScrollPosition(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)

@@ -22,7 +22,9 @@ fun AddProxyScreen(
     onAddSocks5: (String, Int, String, String) -> Unit,
     onAddHttp: (String, Int, String, String) -> Unit,
     onAddMtproto: (String, Int, String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    httpAssistantRunning: Boolean = false,
+    onHttpAssistantToggle: (() -> Unit)? = null
 ) {
     var proxyType by remember { mutableStateOf("SOCKS5") }
     var server by remember { mutableStateOf("") }
@@ -30,6 +32,7 @@ fun AddProxyScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
+    var showHttpAssistantDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -46,12 +49,32 @@ fun AddProxyScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            Text(
-                text = "Add Proxy",
-                color = Color.White,
-                fontSize = 18.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Add Proxy",
+                    color = Color.White,
+                    fontSize = 18.sp
+                )
+                if (onHttpAssistantToggle != null) {
+                    Text(
+                        text = "\uD83D\uDD27",
+                        fontSize = 20.sp,
+                        modifier = Modifier
+                            .clickable {
+                                if (!httpAssistantRunning) {
+                                    onHttpAssistantToggle()
+                                }
+                                showHttpAssistantDialog = true
+                            }
+                            .padding(4.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -178,5 +201,30 @@ fun AddProxyScreen(
                 Text("Add & Enable", fontSize = 13.sp)
             }
         }
+    }
+
+    if (showHttpAssistantDialog) {
+        val ip = top.noxc.wmessenger.core.HttpAssistantService.getLocalIpAddress()
+        val running = top.noxc.wmessenger.core.HttpAssistantService.isRunning()
+        val error = top.noxc.wmessenger.core.HttpAssistantService.lastError
+        AlertDialog(
+            onDismissRequest = { showHttpAssistantDialog = false },
+            title = { Text("HTTP Assistant") },
+            text = {
+                Text(
+                    text = if (running)
+                        "Service is running at\nhttp://$ip:6767"
+                    else if (error != null)
+                        "Failed to start:\n$error"
+                    else
+                        "Service is not running.\nEnable it in Experiments first."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showHttpAssistantDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }

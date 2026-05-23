@@ -18,6 +18,7 @@ A lightweight, open-source Telegram client for Wear OS.
 - Storage management (view cache size and clear cache)
 - Double-tap to reply to messages
 - Wear OS native notifications with quick reply
+- Message translation (Google & Bing)
 
 ## Comparison with other Wear OS Telegram clients
 
@@ -37,6 +38,7 @@ A lightweight, open-source Telegram client for Wear OS.
 | **Storage Management** | ✅ Yes (view & clear) | ? | ✅ Yes (clear only) |
 | **Double-tap to Reply** | ❌ No | ❌ No | ❌ No |
 | **Wear OS Notifications** | ❌ No | ❌ No | ❌ No |
+| **Translation** | ✅ Yes | ❌ No | ❌ No |
 | **Archived Chats** | ❌ No | ? | ✅ Yes |
 | **APK size (arm64-v8a)** | ~26 MB | ~25 MB | ~43.5 MB |
 

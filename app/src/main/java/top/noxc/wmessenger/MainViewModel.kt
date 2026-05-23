@@ -6,7 +6,6 @@ import android.os.Build
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.messaging.FirebaseMessaging
 import top.noxc.wmessenger.BuildConfig
 import top.noxc.wmessenger.core.ChatItem
 import top.noxc.wmessenger.ui.MediaItem
@@ -23,6 +22,7 @@ import top.noxc.wmessenger.core.KeyboardButtonItem
 import top.noxc.wmessenger.core.InlineButtonItem
 import top.noxc.wmessenger.core.FreezeInfo
 import top.noxc.wmessenger.core.WearNotificationManager
+import top.noxc.wmessenger.core.HttpAssistantService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +54,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_EXP_NOTIFICATIONS = "exp_notifications"
         private const val KEY_EXP_AVATAR_CLEAR = "exp_avatar_clear"
         private const val KEY_EXP_DOUBLE_SWIPE_EXIT = "exp_double_swipe_exit"
+        private const val KEY_EXP_HTTP_ASSISTANT = "exp_http_assistant"
+        private const val KEY_EXP_TRANSLATION = "exp_translation"
+        private const val KEY_EXP_TRANSLATION_PROVIDER = "exp_translation_provider"
+        private const val KEY_EXP_TRANSLATION_CONSENT = "exp_translation_consent"
+        private const val KEY_EXP_MESSAGE_MENU = "exp_message_menu"
         private const val KEY_MUTE_ALL_ENABLED = "mute_all_enabled"
         private const val KEY_LIGHT_MODE_ACTIVE = "light_mode_active"
         private const val MAX_ACCOUNTS = 99
@@ -62,9 +67,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, 0)
 
+    init {
+        HttpAssistantService.appContext = application.applicationContext
+    }
+
     var chatListScrollIndex = 0
     var chatListScrollOffset = 0
-
+    var chatListRestoreScrollTrigger = 0
     fun isAppLocked(): Boolean {
         if (!_isAppLockEnabled.value || _appLockPassword.value.isEmpty()) return false
         val timeout = prefs.getLong(KEY_AUTO_LOCK_TIMEOUT, 0L)
@@ -267,6 +276,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val expDoubleSwipeExit: StateFlow<Boolean> = _expDoubleSwipeExit.asStateFlow()
 
+    private val _expHttpAssistant = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_HTTP_ASSISTANT, false)
+    )
+    val expHttpAssistant: StateFlow<Boolean> = _expHttpAssistant.asStateFlow()
+
+    private val _expTranslation = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_TRANSLATION, false)
+    )
+    val expTranslation: StateFlow<Boolean> = _expTranslation.asStateFlow()
+
+    private val _expMessageMenu = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_MESSAGE_MENU, false)
+    )
+    val expMessageMenu: StateFlow<Boolean> = _expMessageMenu.asStateFlow()
+
     private val _muteAllEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_MUTE_ALL_ENABLED, false)
     )
@@ -283,7 +307,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
     val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions.asStateFlow()
 
-    private val _inactiveSessionTtlDays = MutableStateFlow(180)
+    private val _inactiveSessionTtlDays = MutableStateFlow(365)
     val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays.asStateFlow()
 
     var lastActiveTime: Long = 0L
@@ -297,7 +321,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _experimentsUnlocked.value = true
             prefs.edit().putBoolean(KEY_EXPERIMENTS_UNLOCKED, true).apply()
         }
-        initFcmToken()
+        viewModelScope.launch {
+            _currentScreen.collect { screen ->
+                HttpAssistantService.currentScreen = screen.name
+            }
+        }
+        HttpAssistantService.cloudPasswordCallback = { password ->
+            submitPassword(password)
+        }
+        HttpAssistantService.proxyConfigCallback = { type, server, port, username, password, secret ->
+            when (type) {
+                "SOCKS5" -> addSocks5Proxy(server, port, username, password)
+                "HTTP" -> addHttpProxy(server, port, username, password)
+                "MTProto" -> addMtprotoProxy(server, port, secret)
+            }
+        }
         loadAccountList()
         if (_accountList.value.isEmpty()) {
             addAccount()
@@ -937,6 +975,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(screen: Screen) {
         navStack.add(_currentScreen.value)
         _currentScreen.value = screen
+
+        if (_expHttpAssistant.value) {
+            when (screen) {
+                Screen.LOGIN, Screen.PROXY_ADD -> {
+                    if (!HttpAssistantService.isRunning()) {
+                        HttpAssistantService.start()
+                    }
+                }
+                else -> {
+                    if (HttpAssistantService.isRunning()) {
+                        HttpAssistantService.stop()
+                    }
+                }
+            }
+        }
     }
 
     fun swipeBackFromLogin() {
@@ -951,6 +1004,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (navStack.isNotEmpty()) {
             _currentScreen.value = navStack.removeAt(navStack.size - 1)
         }
+
+        if (_expHttpAssistant.value) {
+            val current = _currentScreen.value
+            when (current) {
+                Screen.LOGIN, Screen.PROXY_ADD -> {
+                    if (!HttpAssistantService.isRunning()) {
+                        HttpAssistantService.start()
+                    }
+                }
+                else -> {
+                    if (HttpAssistantService.isRunning()) {
+                        HttpAssistantService.stop()
+                    }
+                }
+            }
+        }
     }
 
     fun navigateToMenu() {
@@ -959,6 +1028,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateBackToChatList() {
         navStack.removeAll { it != Screen.CHAT_LIST }
+        chatListRestoreScrollTrigger++
         _currentScreen.value = Screen.CHAT_LIST
     }
 
@@ -986,6 +1056,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clickInlineButton(chatId: Long, messageId: Long, data: ByteArray) {
         currentManager?.clickInlineButton(chatId, messageId, data)
+    }
+
+    fun translateMessage(text: String) {
+        viewModelScope.launch {
+            val result = top.noxc.wmessenger.core.TranslationService.translate(text, translationProvider.value)
+            _translationResult.value = result
+        }
+    }
+
+    private val _translationProvider = MutableStateFlow(
+        prefs.getString(KEY_EXP_TRANSLATION_PROVIDER, "google") ?: "google"
+    )
+    val translationProvider: StateFlow<String> = _translationProvider.asStateFlow()
+
+    fun setTranslationProvider(provider: String) {
+        _translationProvider.value = provider
+        prefs.edit().putString(KEY_EXP_TRANSLATION_PROVIDER, provider).apply()
+    }
+
+    private val _translationConsentGiven = MutableStateFlow(
+        prefs.getBoolean(KEY_EXP_TRANSLATION_CONSENT, false)
+    )
+    val translationConsentGiven: StateFlow<Boolean> = _translationConsentGiven.asStateFlow()
+
+    fun setTranslationConsent(consent: Boolean) {
+        _translationConsentGiven.value = consent
+        prefs.edit().putBoolean(KEY_EXP_TRANSLATION_CONSENT, consent).apply()
+    }
+
+    private val _translationResult = MutableStateFlow<String?>(null)
+    val translationResult: StateFlow<String?> = _translationResult.asStateFlow()
+
+    fun clearTranslationResult() {
+        _translationResult.value = null
+    }
+
+    fun copyToClipboard(text: String) {
+        val context = getApplication<Application>()
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
+    }
+
+    fun deleteMessage(chatId: Long, messageId: Long) {
+        currentManager?.deleteMessage(chatId, messageId)
     }
 
     fun loadMoreMessages(chatId: Long) {
@@ -1046,6 +1160,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean(KEY_EXP_DOUBLE_SWIPE_EXIT, enabled).apply()
     }
 
+    fun setExpHttpAssistant(enabled: Boolean) {
+        _expHttpAssistant.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_HTTP_ASSISTANT, enabled).apply()
+    }
+
+    fun setExpTranslation(enabled: Boolean) {
+        _expTranslation.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_TRANSLATION, enabled).apply()
+    }
+
+    fun setExpMessageMenu(enabled: Boolean) {
+        _expMessageMenu.value = enabled
+        prefs.edit().putBoolean(KEY_EXP_MESSAGE_MENU, enabled).apply()
+    }
+
     fun disableAllExperiments() {
         _expQuickReply.value = false
         _expLightMode.value = false
@@ -1053,6 +1182,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _expNotifications.value = false
         _expAvatarClear.value = false
         _expDoubleSwipeExit.value = false
+        _expHttpAssistant.value = false
+        _expTranslation.value = false
+        _expMessageMenu.value = false
+        _translationConsentGiven.value = false
         _muteAllEnabled.value = false
         _experimentsUnlocked.value = false
         prefs.edit()
@@ -1062,6 +1195,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .putBoolean(KEY_EXP_NOTIFICATIONS, false)
             .putBoolean(KEY_EXP_AVATAR_CLEAR, false)
             .putBoolean(KEY_EXP_DOUBLE_SWIPE_EXIT, false)
+            .putBoolean(KEY_EXP_HTTP_ASSISTANT, false)
+            .putBoolean(KEY_EXP_TRANSLATION, false)
+            .putBoolean(KEY_EXP_TRANSLATION_CONSENT, false)
+            .putBoolean(KEY_EXP_MESSAGE_MENU, false)
             .putBoolean(KEY_MUTE_ALL_ENABLED, false)
             .putBoolean(KEY_EXPERIMENTS_UNLOCKED, false)
             .apply()
@@ -1401,30 +1538,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun exitApp() {
         closeAllManagers()
-        val activity = getApplication<android.app.Application>()
         android.os.Process.killProcess(android.os.Process.myPid())
-    }
-
-    private fun initFcmToken() {
-        if (!isGooglePlayServicesAvailable()) return
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                Log.d("FCM", "FCM Token: $token")
-                currentManager?.registerPushNotifications(token)
-            } else {
-                Log.w("FCM", "Fetching FCM token failed", task.exception)
-            }
-        }
-    }
-
-    private fun isGooglePlayServicesAvailable(): Boolean {
-        return try {
-            com.google.android.gms.common.GoogleApiAvailability.getInstance()
-                .isGooglePlayServicesAvailable(getApplication()) == com.google.android.gms.common.ConnectionResult.SUCCESS
-        } catch (e: Exception) {
-            false
-        }
     }
 
     fun showExitConfirm() {

@@ -96,7 +96,7 @@ class TdLibManager(
     private val _sessions = MutableStateFlow<List<top.noxc.wmessenger.ui.SessionItem>>(emptyList())
     val sessions: StateFlow<List<top.noxc.wmessenger.ui.SessionItem>> = _sessions
 
-    private val _inactiveSessionTtlDays = MutableStateFlow(180)
+    private val _inactiveSessionTtlDays = MutableStateFlow(365)
     val inactiveSessionTtlDays: StateFlow<Int> = _inactiveSessionTtlDays
 
     private val _userNames = mutableMapOf<Long, String>()
@@ -1078,6 +1078,10 @@ class TdLibManager(
 
     fun sendChatTyping(chatId: Long) {
         client?.send(TdApi.SendChatAction(chatId, null, null, TdApi.ChatActionTyping()), null)
+    }
+
+    fun deleteMessage(chatId: Long, messageId: Long) {
+        client?.send(TdApi.DeleteMessages(chatId, longArrayOf(messageId), false), null)
     }
 
     private fun fetchBotCommands(chatId: Long, botUserId: Long) {

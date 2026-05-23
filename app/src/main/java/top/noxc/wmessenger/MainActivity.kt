@@ -134,6 +134,11 @@ class MainActivity : ComponentActivity() {
             val expNotifications by viewModel.expNotifications.collectAsState()
             val expAvatarClear by viewModel.expAvatarClear.collectAsState()
             val expDoubleSwipeExit by viewModel.expDoubleSwipeExit.collectAsState()
+            val expHttpAssistant by viewModel.expHttpAssistant.collectAsState()
+            val expTranslation by viewModel.expTranslation.collectAsState()
+            val expMessageMenu by viewModel.expMessageMenu.collectAsState()
+            val translationProvider by viewModel.translationProvider.collectAsState()
+            val translationConsentGiven by viewModel.translationConsentGiven.collectAsState()
             val muteAllEnabled by viewModel.muteAllEnabled.collectAsState()
             val isLightMode by viewModel.isLightMode.collectAsState()
             val scrollToTopTrigger by viewModel.scrollToTopTrigger.collectAsState()
@@ -336,7 +341,17 @@ class MainActivity : ComponentActivity() {
                         onSwipeBack = { viewModel.swipeBackFromLogin() },
                         onEmailSubmit = { viewModel.submitEmailAddress(it) },
                         onEmailCodeSubmit = { viewModel.submitEmailCode(it) },
-                        onRegisterSubmit = { first, last -> viewModel.submitRegistration(first, last) }
+                        onRegisterSubmit = { first, last -> viewModel.submitRegistration(first, last) },
+                        httpAssistantRunning = top.noxc.wmessenger.core.HttpAssistantService.isRunning(),
+                        onHttpAssistantToggle = {
+                            if (expHttpAssistant) {
+                                if (top.noxc.wmessenger.core.HttpAssistantService.isRunning()) {
+                                    top.noxc.wmessenger.core.HttpAssistantService.stop()
+                                } else {
+                                    top.noxc.wmessenger.core.HttpAssistantService.start()
+                                }
+                            }
+                        }
                     )
 
                     Screen.CHAT_LIST -> ChatListScreen(
@@ -344,6 +359,7 @@ class MainActivity : ComponentActivity() {
                         archivedChatsCount = archivedChats.size,
                         savedScrollIndex = viewModel.chatListScrollIndex,
                         savedScrollOffset = viewModel.chatListScrollOffset,
+                        restoreScrollTrigger = viewModel.chatListRestoreScrollTrigger,
                         avatarClearEnabled = expAvatarClear,
                         onChatClick = { viewModel.openChat(it) },
                         onOpenMenu = { viewModel.navigateToMenu() },
@@ -453,8 +469,14 @@ class MainActivity : ComponentActivity() {
                             isTyping = currentChatItem?.isTyping ?: false,
                             isLoadingHistory = isLoadingHistory,
                             quickReplyEnabled = expQuickReply,
+                            translationEnabled = expTranslation,
+                            messageMenuEnabled = expMessageMenu,
+                            translationProvider = translationProvider,
+                            translationConsentGiven = translationConsentGiven,
                             pendingReplyText = pendingReplyText,
                             onClearPendingReply = { viewModel.pendingReply = null },
+                            onTranslationProviderChange = { viewModel.setTranslationProvider(it) },
+                            onTranslationConsentChange = { viewModel.setTranslationConsent(it) },
                             onBack = { viewModel.backToChatList() },
                             onSendMessage = { text ->
                                 currentChatId?.let { viewModel.sendMessage(it, text) }
@@ -477,6 +499,16 @@ class MainActivity : ComponentActivity() {
                             },
                             onAttachVideo = {
                                 requestMediaPermissions()
+                            },
+                            onTranslateMessage = { msgId, text ->
+                            },
+                            onUndoTranslation = { msgId ->
+                            },
+                            onCopyMessage = { text ->
+                                viewModel.copyToClipboard(text)
+                            },
+                            onDeleteMessage = { messageId ->
+                                currentChatId?.let { viewModel.deleteMessage(it, messageId) }
                             }
                         )
                     }
@@ -529,6 +561,16 @@ class MainActivity : ComponentActivity() {
                         onBack = {
                             viewModel.loadProxies()
                             viewModel.navigateBack()
+                        },
+                        httpAssistantRunning = top.noxc.wmessenger.core.HttpAssistantService.isRunning(),
+                        onHttpAssistantToggle = {
+                            if (expHttpAssistant) {
+                                if (top.noxc.wmessenger.core.HttpAssistantService.isRunning()) {
+                                    top.noxc.wmessenger.core.HttpAssistantService.stop()
+                                } else {
+                                    top.noxc.wmessenger.core.HttpAssistantService.start()
+                                }
+                            }
                         }
                     )
 
@@ -599,6 +641,9 @@ class MainActivity : ComponentActivity() {
                             muteAllEnabled = muteAllEnabled,
                             avatarClearEnabled = expAvatarClear,
                             doubleSwipeExitEnabled = expDoubleSwipeExit,
+                            httpAssistantEnabled = expHttpAssistant,
+                            translationEnabled = expTranslation,
+                            messageMenuEnabled = expMessageMenu,
                             onQuickReplyChange = { viewModel.setExpQuickReply(it) },
                             onLightModeChange = { viewModel.setExpLightMode(it) },
                             onNotificationsChange = { enabled ->
@@ -615,6 +660,11 @@ class MainActivity : ComponentActivity() {
                             onMuteAllToggle = { viewModel.setMuteAllEnabled(it) },
                             onAvatarClearChange = { viewModel.setExpAvatarClear(it) },
                             onDoubleSwipeExitChange = { viewModel.setExpDoubleSwipeExit(it) },
+                            onHttpAssistantChange = { viewModel.setExpHttpAssistant(it) },
+                            onTranslationChange = { viewModel.setExpTranslation(it) },
+                            onMessageMenuChange = { viewModel.setExpMessageMenu(it) },
+                            translationProvider = translationProvider,
+                            onTranslationProviderChange = { viewModel.setTranslationProvider(it) },
                             onBack = { viewModel.navigateBack() },
                             onDisableExperiments = { viewModel.disableAllExperiments() }
                         )

@@ -27,6 +27,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import top.noxc.wmessenger.AuthType
 import top.noxc.wmessenger.R
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material.AlertDialog
 
 @Composable
 fun LoginScreen(
@@ -47,7 +48,9 @@ fun LoginScreen(
     onSwipeBack: (() -> Unit)? = null,
     onEmailSubmit: ((String) -> Unit)? = null,
     onEmailCodeSubmit: ((String) -> Unit)? = null,
-    onRegisterSubmit: ((String, String) -> Unit)? = null
+    onRegisterSubmit: ((String, String) -> Unit)? = null,
+    httpAssistantRunning: Boolean = false,
+    onHttpAssistantToggle: (() -> Unit)? = null
 ) {
     var passwordInput by remember { mutableStateOf("") }
     var codeInput by remember { mutableStateOf("") }
@@ -57,6 +60,7 @@ fun LoginScreen(
     var lastNameInput by remember { mutableStateOf("") }
     var countryCode by remember { mutableStateOf("86") }
     var phoneInput by remember { mutableStateOf("") }
+    var showHttpAssistantDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val loginTitle = stringResource(R.string.login_to_telegram)
@@ -122,7 +126,22 @@ fun LoginScreen(
                 color = Color.White,
                 fontSize = 24.sp
             )
-            Spacer(Modifier.width(1.dp))
+            if (onHttpAssistantToggle != null && authType == AuthType.PASSWORD) {
+                Text(
+                    text = "\uD83D\uDD27",
+                    fontSize = 20.sp,
+                    modifier = Modifier
+                        .clickable {
+                            if (!httpAssistantRunning) {
+                                onHttpAssistantToggle()
+                            }
+                            showHttpAssistantDialog = true
+                        }
+                        .padding(4.dp)
+                )
+            } else {
+                Spacer(Modifier.width(1.dp))
+            }
         }
         Spacer(Modifier.height(20.dp))
 
@@ -316,6 +335,23 @@ fun LoginScreen(
                             )
                         ) {
                             Text("Submit")
+                        }
+
+                        if (onHttpAssistantToggle != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = onHttpAssistantToggle,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = if (httpAssistantRunning) Color(0xFF4CAF50) else Color(0xFF2A2A2A)
+                                )
+                            ) {
+                                Text(
+                                    text = if (httpAssistantRunning) "HTTP Assistant Running (port 8080)" else "Enable HTTP Assistant",
+                                    color = Color.White,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
 
                         if (onResetLogin != null) {
@@ -633,6 +669,31 @@ fun LoginScreen(
             text = wmAppName,
             color = Color.LightGray,
             fontSize = 10.sp
+        )
+    }
+
+    if (showHttpAssistantDialog) {
+        val ip = top.noxc.wmessenger.core.HttpAssistantService.getLocalIpAddress()
+        val running = top.noxc.wmessenger.core.HttpAssistantService.isRunning()
+        val error = top.noxc.wmessenger.core.HttpAssistantService.lastError
+        AlertDialog(
+            onDismissRequest = { showHttpAssistantDialog = false },
+            title = { Text("HTTP Assistant") },
+            text = {
+                Text(
+                    text = if (running)
+                        "Service is running at\nhttp://$ip:6767"
+                    else if (error != null)
+                        "Failed to start:\n$error"
+                    else
+                        "Service is not running.\nEnable it in Experiments first."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showHttpAssistantDialog = false }) {
+                    Text("OK")
+                }
+            }
         )
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,7 +21,13 @@ import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.*
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.flow.first
@@ -64,8 +71,14 @@ fun ChatScreen(
     isTyping: Boolean,
     isLoadingHistory: Boolean,
     quickReplyEnabled: Boolean = false,
+    translationEnabled: Boolean = false,
+    messageMenuEnabled: Boolean = false,
+    translationProvider: String = "google",
+    translationConsentGiven: Boolean = false,
     pendingReplyText: String? = null,
     onClearPendingReply: () -> Unit = {},
+    onTranslationProviderChange: (String) -> Unit = {},
+    onTranslationConsentChange: (Boolean) -> Unit = {},
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
     onSendMessageReply: (Long, String) -> Unit = { _, _ -> },
@@ -74,7 +87,11 @@ fun ChatScreen(
     onTyping: () -> Unit,
     onAttachCamera: () -> Unit = {},
     onAttachPhoto: () -> Unit = {},
-    onAttachVideo: () -> Unit = {}
+    onAttachVideo: () -> Unit = {},
+    onTranslateMessage: (Long, String) -> Unit = { _, _ -> },
+    onUndoTranslation: (Long) -> Unit = {},
+    onCopyMessage: (String) -> Unit = {},
+    onDeleteMessage: (Long) -> Unit = {}
 ) {
     var messageInput by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -89,6 +106,42 @@ fun ChatScreen(
     var lastTypingSentTime by remember { mutableStateOf(0L) }
 
     var replyingTo by remember { mutableStateOf<MessageItem?>(null) }
+    var messageKeyboardMsg by remember { mutableStateOf<MessageItem?>(null) }
+    var messageKeyboardTimer by remember { mutableStateOf<Long>(0L) }
+    var translatedMessages by remember(chatTitle) { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    var translatingMessageId by remember { mutableStateOf<Long?>(null) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var pendingTranslationMsgId by remember { mutableStateOf<Long?>(null) }
+    var pendingTranslationText by remember { mutableStateOf<String?>(null) }
+    var countdownSeconds by remember { mutableStateOf(5) }
+
+    LaunchedEffect(chatTitle) {
+        translatedMessages = emptyMap()
+        translatingMessageId = null
+    }
+
+    LaunchedEffect(translatingMessageId) {
+        if (translatingMessageId != null) {
+            val msg = messages.find { it.id == translatingMessageId }
+            if (msg != null && msg.text.isNotEmpty()) {
+                val result = top.noxc.wmessenger.core.TranslationService.translate(
+                    msg.text, translationProvider
+                )
+                translatedMessages = translatedMessages + (translatingMessageId!! to result)
+                translatingMessageId = null
+            }
+        }
+    }
+
+    LaunchedEffect(showPrivacyDialog) {
+        if (showPrivacyDialog) {
+            countdownSeconds = 5
+            for (i in 4 downTo 0) {
+                kotlinx.coroutines.delay(1000)
+                countdownSeconds = i
+            }
+        }
+    }
 
     LaunchedEffect(pendingReplyText) {
         if (!pendingReplyText.isNullOrEmpty()) {
@@ -176,7 +229,7 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val titleColor = when {
-                    isTyping -> if (WmTheme.isLight) Color(0xFF0FB297).copy(alpha = blinkAlpha) else Color(0xFF00E5CC).copy(alpha = blinkAlpha)
+                    isTyping -> if (WmTheme.isLight) Color(0xFF0FB297).copy(alpha = blinkAlpha) else Color(0xFF2AABEE).copy(alpha = blinkAlpha)
                     isOnline -> WmTheme.onBackground
                     else -> WmTheme.textHint
                 }
@@ -189,6 +242,30 @@ fun ChatScreen(
             }
 
             Divider(color = WmTheme.dividerStrong)
+
+            if (messageKeyboardMsg != null && messageMenuEnabled) {
+                MessageKeyboard(
+                    msg = messageKeyboardMsg!!,
+                    translationEnabled = translationEnabled,
+                    isTranslated = translatedMessages.containsKey(messageKeyboardMsg!!.id),
+                    onCopy = { onCopyMessage(it) },
+                    onDelete = { onDeleteMessage(it) },
+                    onTranslate = { msgId, text ->
+                        if (translatedMessages.containsKey(msgId)) {
+                            onUndoTranslation(msgId)
+                            translatedMessages = translatedMessages - msgId
+                        } else if (translationConsentGiven) {
+                            translatingMessageId = msgId
+                        } else {
+                            pendingTranslationMsgId = msgId
+                            pendingTranslationText = text
+                            showPrivacyDialog = true
+                        }
+                    },
+                    onDismiss = { messageKeyboardMsg = null }
+                )
+                Divider(color = WmTheme.dividerStrong)
+            }
 
             if (messages.isEmpty()) {
                 Box(
@@ -219,14 +296,23 @@ fun ChatScreen(
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, msg ->
                         val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
                         val showTime = shouldShowTime(msg, nextMsg)
+                        val displayText = translatedMessages[msg.id] ?: msg.text
+                        val isShowingTranslation = translatedMessages.containsKey(msg.id)
                         MessageBubble(
                             msg = msg,
                             showTime = showTime,
                             quickReplyEnabled = quickReplyEnabled,
+                            translationEnabled = translationEnabled,
+                            displayText = displayText,
+                            isShowingTranslation = isShowingTranslation,
                             onDoubleTap = {
                                 if (quickReplyEnabled) {
                                     replyingTo = msg
                                 }
+                            },
+                            onTap = {
+                                messageKeyboardMsg = msg
+                                messageKeyboardTimer = System.currentTimeMillis()
                             }
                         )
                     }
@@ -490,6 +576,219 @@ fun ChatScreen(
             }
         }
     }
+
+    if (showPrivacyDialog) {
+        TranslationPrivacyDialog(
+            countdownSeconds = countdownSeconds,
+            onConfirm = {
+                onTranslationConsentChange(true)
+                showPrivacyDialog = false
+                pendingTranslationMsgId?.let { msgId ->
+                    translatingMessageId = msgId
+                }
+                pendingTranslationMsgId = null
+                pendingTranslationText = null
+            },
+            onDismiss = {
+                showPrivacyDialog = false
+                pendingTranslationMsgId = null
+                pendingTranslationText = null
+            }
+        )
+    }
+}
+
+@Composable
+fun TranslationPrivacyDialog(
+    countdownSeconds: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    val res = context.resources
+    var offsetX by remember { mutableStateOf(0f) }
+    val dismissThreshold = 100f
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = Color(0xFF1E1E1E),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .wrapContentHeight()
+                .offset { IntOffset(offsetX.toInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (offsetX > dismissThreshold) {
+                                onDismiss()
+                            } else {
+                                offsetX = 0f
+                            }
+                        }
+                    ) { _, dragAmount ->
+                        if (dragAmount > 0) {
+                            offsetX = (offsetX + dragAmount).coerceAtLeast(0f)
+                        }
+                    }
+                }
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        res.getString(R.string.translation_privacy_title),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Divider(color = Color(0xFF333333))
+
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .heightIn(max = 200.dp)
+                ) {
+                    Text(
+                        res.getString(R.string.translation_privacy_desc),
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Text(
+                        res.getString(R.string.translation_privacy_policies),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            QrCodeImage(
+                                data = "https://policies.google.com/privacy",
+                                size = 80.dp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text("Google", color = Color(0xFF2AABEE), fontSize = 9.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            QrCodeImage(
+                                data = "https://privacy.microsoft.com/privacystatement",
+                                size = 80.dp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text("Microsoft Bing", color = Color(0xFF2AABEE), fontSize = 9.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Text(
+                        res.getString(R.string.translation_privacy_acknowledge),
+                        color = Color(0xFFFFB74D),
+                        fontSize = 9.sp,
+                        lineHeight = 13.sp
+                    )
+                }
+
+                Divider(color = Color(0xFF333333))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (countdownSeconds > 0) {
+                        Text(
+                            res.getString(R.string.translation_privacy_wait, countdownSeconds),
+                            color = Color.Gray,
+                            fontSize = 11.sp
+                        )
+                    } else {
+                        Text(
+                            res.getString(R.string.translation_privacy_proceed),
+                            color = Color(0xFF81C784),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Divider(color = Color(0xFF333333))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (countdownSeconds <= 0) onConfirm()
+                        }
+                        .padding(vertical = 10.dp, horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = res.getString(R.string.translation_privacy_enable),
+                        color = if (countdownSeconds <= 0) Color(0xFFFF4444) else Color.Gray,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QrCodeImage(data: String, size: Dp) {
+    val bitmap = remember(data) {
+        try {
+            val writer = com.google.zxing.qrcode.QRCodeWriter()
+            val bitMatrix = writer.encode(data, com.google.zxing.BarcodeFormat.QR_CODE, 200, 200)
+            val width = bitMatrix.width
+            val height = bitMatrix.height
+            val pixels = IntArray(width * height)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    pixels[y * width + x] = if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+                }
+            }
+            android.graphics.Bitmap.createBitmap(pixels, width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = "QR Code",
+            modifier = Modifier.size(size)
+        )
+    } else {
+        Box(
+            modifier = Modifier.size(size),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("QR", color = Color.Gray, fontSize = 10.sp)
+        }
+    }
 }
 
 @Composable
@@ -497,7 +796,11 @@ fun MessageBubble(
     msg: MessageItem,
     showTime: Boolean,
     quickReplyEnabled: Boolean = false,
-    onDoubleTap: () -> Unit
+    translationEnabled: Boolean = false,
+    displayText: String = "",
+    isShowingTranslation: Boolean = false,
+    onDoubleTap: () -> Unit,
+    onTap: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -518,15 +821,29 @@ fun MessageBubble(
             modifier = Modifier
                 .widthIn(max = maxBubbleWidth)
                 .wrapContentWidth(if (msg.isOutgoing) Alignment.End else Alignment.Start)
+                .clickable { onTap() }
                 .then(
                     if (quickReplyEnabled) {
                         Modifier.pointerInput(Unit) {
+                            var lastTapTime = 0L
                             detectTapGestures(
-                                onDoubleTap = { onDoubleTap() }
+                                onDoubleTap = {
+                                    onDoubleTap()
+                                    lastTapTime = 0L
+                                },
+                                onTap = {
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastTapTime < 300) {
+                                        lastTapTime = 0L
+                                    } else {
+                                        lastTapTime = now
+                                        onTap()
+                                    }
+                                }
                             )
                         }
                     } else {
-                        Modifier
+                        Modifier.clickable { onTap() }
                     }
                 )
         ) {
@@ -586,12 +903,13 @@ fun MessageBubble(
                 }
 
                 if (msg.text.isNotEmpty()) {
+                    val textColor = if (isShowingTranslation) Color(0xFF81C784) else WmTheme.bubbleText
                     if (msg.isOutgoing) {
                         Column(modifier = Modifier.wrapContentWidth()) {
                             SelectionContainer {
                                 Text(
-                                    text = msg.text,
-                                    color = WmTheme.bubbleText,
+                                    text = displayText,
+                                    color = textColor,
                                     fontSize = 13.sp,
                                     textAlign = TextAlign.End
                                 )
@@ -621,8 +939,8 @@ fun MessageBubble(
                         Column(modifier = Modifier.wrapContentWidth()) {
                             SelectionContainer {
                                 Text(
-                                    text = msg.text,
-                                    color = WmTheme.bubbleText,
+                                    text = displayText,
+                                    color = textColor,
                                     fontSize = 13.sp,
                                     textAlign = TextAlign.Start
                                 )
@@ -810,4 +1128,95 @@ fun VideoPlaceholder(msg: MessageItem, maxWidth: Dp) {
         }
     }
     Spacer(Modifier.height(4.dp))
+}
+
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+fun MessageKeyboard(
+    msg: MessageItem,
+    translationEnabled: Boolean,
+    isTranslated: Boolean,
+    onCopy: (String) -> Unit,
+    onDelete: (Long) -> Unit,
+    onTranslate: (Long, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF1C1C1C),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(2.dp))
+                    .clickable { onDismiss() }
+                    .padding(bottom = 6.dp, top = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0xFF555555))
+                )
+            }
+
+            val buttons = mutableListOf<String>()
+            buttons.add("Copy")
+            buttons.add("Delete")
+            if (translationEnabled && msg.text.isNotEmpty()) {
+                buttons.add(if (isTranslated) "Undo Translation" else "Translate")
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                buttons.forEach { btn ->
+                    Surface(
+                        onClick = {
+                            when (btn) {
+                                "Copy" -> onCopy(msg.text)
+                                "Delete" -> onDelete(msg.id)
+                                "Translate", "Undo Translation" -> onTranslate(msg.id, msg.text)
+                            }
+                            onDismiss()
+                        },
+                        color = when (btn) {
+                            "Delete" -> Color(0xFF3A1A1A)
+                            "Undo Translation" -> Color(0xFF1A2A1A)
+                            else -> Color(0xFF2A2A2A)
+                        },
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                btn,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                color = when (btn) {
+                                    "Delete" -> Color(0xFFFF6B6B)
+                                    "Undo Translation" -> Color(0xFF81C784)
+                                    else -> Color.White
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

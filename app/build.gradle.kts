@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
 }
 
 import java.util.Properties
@@ -14,8 +13,9 @@ android {
         applicationId = "top.noxc.wmessenger"
         minSdk = 25
         targetSdk = 35
-        versionCode = 10200000
-        versionName = "1.2.0"
+        versionCode = 10201000
+        versionName = "1.2.1" +
+                ""
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
@@ -75,6 +75,18 @@ android {
             isMinifyEnabled = false
         }
     }
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/DEPENDENCIES"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -93,6 +105,12 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material:material")
     implementation("com.google.zxing:core:3.5.2")
-    implementation("com.google.firebase:firebase-messaging:23.4.1")
-    implementation("com.google.android.gms:play-services-base:18.3.0")
+    implementation("io.ktor:ktor-server-core:2.3.7")
+    implementation("io.ktor:ktor-server-netty:2.3.7")
+    implementation("io.ktor:ktor-server-content-negotiation:2.3.7")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    implementation("org.slf4j:slf4j-nop:2.0.9")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jsoup:jsoup:1.17.2")
 }

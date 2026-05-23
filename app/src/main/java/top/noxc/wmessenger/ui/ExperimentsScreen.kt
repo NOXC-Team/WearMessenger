@@ -28,16 +28,31 @@ fun ExperimentsScreen(
     muteAllEnabled: Boolean,
     avatarClearEnabled: Boolean,
     doubleSwipeExitEnabled: Boolean,
+    httpAssistantEnabled: Boolean,
+    translationEnabled: Boolean,
+    messageMenuEnabled: Boolean,
+    translationProvider: String,
     onQuickReplyChange: (Boolean) -> Unit,
     onLightModeChange: (Boolean) -> Unit,
     onNotificationsChange: (Boolean) -> Unit,
     onMuteAllToggle: (Boolean) -> Unit,
     onAvatarClearChange: (Boolean) -> Unit,
     onDoubleSwipeExitChange: (Boolean) -> Unit,
+    onHttpAssistantChange: (Boolean) -> Unit,
+    onTranslationChange: (Boolean) -> Unit,
+    onMessageMenuChange: (Boolean) -> Unit,
+    onTranslationProviderChange: (String) -> Unit,
     onBack: () -> Unit,
     onDisableExperiments: () -> Unit
 ) {
     val context = LocalContext.current
+    var showProviderDialog by remember { mutableStateOf(false) }
+
+    val providerDisplay = when (translationProvider) {
+        "google" -> "Google"
+        "bing" -> "Bing"
+        else -> "Google"
+    }
 
     Column(
         modifier = Modifier
@@ -157,6 +172,81 @@ fun ExperimentsScreen(
             description = stringResource(R.string.exp_double_swipe_exit_desc),
             checked = doubleSwipeExitEnabled,
             onCheckedChange = onDoubleSwipeExitChange
+        )
+
+        ExperimentItem(
+            title = "HTTP Assistant",
+            description = "Enable HTTP server for remote input (Cloud Password, Proxy config)",
+            checked = httpAssistantEnabled,
+            onCheckedChange = onHttpAssistantChange
+        )
+
+        ExperimentItem(
+            title = "Translation",
+            description = "Translate messages using Bing or Google (free, no API key)",
+            checked = translationEnabled,
+            onCheckedChange = onTranslationChange
+        )
+
+        if (translationEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showProviderDialog = true }
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Translation Provider",
+                    color = WmTheme.onBackground,
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = providerDisplay,
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+            Divider(color = WmTheme.divider)
+        }
+
+        ExperimentItem(
+            title = "Message Menu",
+            description = "Tap message to show Copy/Delete/Translate menu",
+            checked = messageMenuEnabled,
+            onCheckedChange = onMessageMenuChange
+        )
+    }
+
+    if (showProviderDialog) {
+        AlertDialog(
+            onDismissRequest = { showProviderDialog = false },
+            title = { Text("Translation Provider", color = Color.White, fontSize = 14.sp) },
+            buttons = {
+                Column {
+                    Divider(color = Color(0xFF333333))
+                    listOf("google" to "Google", "bing" to "Bing").forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onTranslationProviderChange(value)
+                                    showProviderDialog = false
+                                }
+                                .padding(vertical = 10.dp, horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(label, color = Color.White, fontSize = 13.sp)
+                            if (translationProvider == value) {
+                                Text("✓", color = Color(0xFF2AABEE), fontSize = 14.sp)
+                            }
+                        }
+                        Divider(color = WmTheme.divider)
+                    }
+                }
+            }
         )
     }
 }
